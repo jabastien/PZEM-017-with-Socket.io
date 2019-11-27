@@ -1,0 +1,2 @@
+npm init
+npm i --save express socket.io nodemon

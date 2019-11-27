@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Socket IO RealTime Battery Life</title>
+    <script src='/socket.io/socket.io.js'></script>
+    <script src='https://code.jquery.com/jquery-1.11.1.js'></script>
+
+    <script>
+        $(() => {
+            var socket = io();
+            let channel = 'ESP';
+            $('form').submit(() => {
+                socket.emit(channel, $('#m').val());
+                $('#m').val('');
+                return false;
+            });
+
+            socket.on(channel, (data) => {
+                console.log(data)          
+                $('#voltage_usage').text(data.sensor.voltage_usage);
+                $('#current_usage').text(data.sensor.current_usage);
+                $('#active_power').text(data.sensor.active_power);
+                $('#active_energy').text(data.sensor.active_energy);
+                $('#over_power_alarm').text(data.sensor.over_power_alarm);
+                $('#lower_power_alarm').text(data.sensor.lower_power_alarm);
+            });
+        });
+    </script>
+</head>
+
+<body>
+    Socket IO RealTime Battery Life
+    <div>
+        
+       voltage: <span id="voltage_usage"></span> V<br/>
+       current: <span id="current_usage"></span> A<br/>
+       power: <span id="active_power"></span> W<br/>
+       energy: <span id="active_energy"></span> Whr<br/>
+       alarm hi: <span id="over_power_alarm"></span><br/>
+       alarm lo: <span id="lower_power_alarm"></span><br/>
+    </div>
+
+    <form action="">
+        <input id="m" autocomplete="off" />
+        <button>Send</button>
+    </form>
+</body>
+
+</html>
