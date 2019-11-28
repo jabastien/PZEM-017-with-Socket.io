@@ -1,7 +1,5 @@
 #include <Arduino.h>
-
 #include <ESP8266WiFi.h>
-#include <ESP8266WiFiMulti.h>
 #include <SocketIOClient.h>
 #include <ArduinoJson.h>
 #include <Hash.h>
@@ -10,7 +8,13 @@
 #include <SoftwareSerial.h>
 #define USE_SERIAL Serial
 
-ESP8266WiFiMulti WiFiMulti;
+char* device_id = "e49n2dix";
+
+// WiFi parameters
+const char* ssid = "X-WIFI";
+const char* password = "123456";
+
+WiFiClientSecure wificlient;
 SocketIOClient client;
 
 SoftwareSerial pzemSerial(D3, D2); //rx, tx
@@ -43,6 +47,7 @@ ModbusMaster node;
   Ref: https://github.com/armtronix/Wifi-Single-Dimmer-Board/blob/ba577f0539a1fc73145e24bb50342eb1dca86594/Wifi-Single-Dimmer-Board/Arduino_Code/Wifi_single_dimmer_tasmota/sonoff_betaV0.3/xnrg_06_pzem_dc.ino
   Ref: https://github.com/EvertDekker/Pzem016Test/blob/e95c1e6bb2d384a93910be2c8b867e40669a24b4/Pzem016Test.ino
   Ref: https://github.com/Links2004/arduinoWebSockets/blob/master/examples/esp8266/WebSocketClientSocketIO/WebSocketClientSocketIO.ino
+  Ref: https://github.com/washo4evr/Socket.io-v1.x-Library/blob/master/SocketIOClient.h
 
   Fix complile issue
   https://github.com/esp8266/Arduino/commit/b71872ccca14c410a19371ed6a4838dbaa67e62b
@@ -63,17 +68,20 @@ void setup() {
 
   resetEnergy(pzemSlaveAddr);
 
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
   if (WiFi.getMode() & WIFI_AP) {
     WiFi.softAPdisconnect(true);
   }
 
-  WiFiMulti.addAP("X-WIFI", "1234567890");
-
   USE_SERIAL.println("Connecting wifi network");
-  while (WiFiMulti.run() != WL_CONNECTED) {
-    USE_SERIAL.print(".");
+  while (WiFi.status() != WL_CONNECTED)
+  {
     delay(500);
+    Serial.print(".");
   }
+
+  setup_IpAddress();
 
   USE_SERIAL.println();
   USE_SERIAL.print("WIFI Connected ");
@@ -82,7 +90,7 @@ void setup() {
   USE_SERIAL.println();
 
 
-  if (!client.connect("192.168.137.17", 3000)) {
+  if (!client.connect("192.168.137.13", 3000)) {
     Serial.println("connection failed");
   }
   if (client.connected()) {
@@ -132,10 +140,12 @@ void loop() {
     USE_SERIAL.print("OVER_POWER_ALARM:  ");   USE_SERIAL.println(over_power_alarm);
     USE_SERIAL.println("====================================================");
 
+    uint64_t now = millis();
     StaticJsonDocument<1024> doc;
     doc["data"] = "ESP8266";
     doc["version"] = "v1.0";
-    
+    doc["time"] = now;
+
     JsonObject object = doc.createNestedObject("sensor");
     object["voltage_usage"] = voltage_usage;
     object["current_usage"] = current_usage;
@@ -209,4 +219,12 @@ void changeAddress(uint8_t OldslaveAddr, uint8_t NewslaveAddr)
   pzemSerial.write(lowByte(u16CRC));
   pzemSerial.write(highByte(u16CRC));
   delay(1000);
+}
+
+
+void setup_IpAddress() {
+  IPAddress local_ip = {192, 168, 137, 144};
+  IPAddress gateway = {192, 168, 137, 1};
+  IPAddress subnet = {255, 255, 255, 0};
+  WiFi.config(local_ip, gateway, subnet);
 }
