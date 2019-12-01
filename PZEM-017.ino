@@ -8,15 +8,17 @@
 #include <SoftwareSerial.h>
 #define USE_SERIAL Serial
 
-char* device_id = "e49n2dix";
+const char* device_id = "e49n2dix";
+
 
 // WiFi parameters
 const char* ssid = "X-WIFI";
-const char* password = "123456";
+const char* password = "giffyhackman";
+char* IpAddress = "192.168.137.17";
+const int ServerPort = 4000;
 
-WiFiClientSecure wificlient;
+
 SocketIOClient client;
-
 SoftwareSerial pzemSerial(D3, D2); //rx, tx
 ModbusMaster node;
 
@@ -70,10 +72,12 @@ void setup() {
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
+
   if (WiFi.getMode() & WIFI_AP) {
     WiFi.softAPdisconnect(true);
   }
 
+  USE_SERIAL.println();
   USE_SERIAL.println("Connecting wifi network");
   while (WiFi.status() != WL_CONNECTED)
   {
@@ -87,10 +91,10 @@ void setup() {
   USE_SERIAL.print("WIFI Connected ");
   String ip = WiFi.localIP().toString();
   USE_SERIAL.println(ip.c_str());
+  USE_SERIAL.println("Socket.io Server: "); USE_SERIAL.print(IpAddress);
   USE_SERIAL.println();
 
-
-  if (!client.connect("192.168.137.13", 3000)) {
+  if (!client.connect(IpAddress, ServerPort)) {
     Serial.println("connection failed");
   }
   if (client.connected()) {
@@ -105,7 +109,9 @@ void loop() {
   //Indicates that the master needs to read 8 registers with slave address 0x01 and the start address of the register is 0x0000.
   result = node.readInputRegisters(0x0000, 8); //read the 8 registers of the PZEM-017
   digitalWrite(LEDPIN, 0);
-  if (result == node.ku8MBSuccess)
+
+  // if (result == node.ku8MBSuccess)
+  if (true)
   {
     uint32_t tempdouble = 0x00000000;
 
@@ -147,12 +153,19 @@ void loop() {
     doc["time"] = now;
 
     JsonObject object = doc.createNestedObject("sensor");
-    object["voltage_usage"] = voltage_usage;
-    object["current_usage"] = current_usage;
-    object["active_power"] = active_power;
-    object["active_energy"] = active_energy;
-    object["over_power_alarm"] = over_power_alarm;
-    object["lower_power_alarm"] = lower_power_alarm;
+    //    object["voltage_usage"] = voltage_usage;
+    //    object["current_usage"] = current_usage;
+    //    object["active_power"] = active_power;
+    //    object["active_energy"] = active_energy;
+    //    object["over_power_alarm"] = over_power_alarm;
+    //    object["lower_power_alarm"] = lower_power_alarm;
+
+    object["voltage_usage"] = random(2,5);
+    object["current_usage"] = random(2,5);
+    object["active_power"] = random(3,6);
+    object["active_energy"] = random(2,5);
+    object["over_power_alarm"] = 0;
+    object["lower_power_alarm"] = 1;
 
     //JsonArray alarm = object.createNestedArray("alarm");
     //    alarm.add(48.756080);
@@ -171,7 +184,7 @@ void loop() {
   }
 
   if (!client.connected()) {
-    client.connect("192.168.137.17", 3000);
+    client.connect(IpAddress, ServerPort);
 
     USE_SERIAL.print("Reconnecting...");
     delay(2000);
