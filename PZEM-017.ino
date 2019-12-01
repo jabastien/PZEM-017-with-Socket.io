@@ -13,7 +13,7 @@ const char* device_id = "e49n2dix";
 
 // WiFi parameters
 const char* ssid = "X-WIFI";
-const char* password = "giffyhackman";
+const char* password = "123456787";
 char* IpAddress = "192.168.137.17";
 const int ServerPort = 4000;
 

@@ -53,7 +53,7 @@ export default (): ReactElement => {
         Messages: JSON.stringify(data.sensor)
       });
 
-      const currTime = moment.utc().local().format('HH:mm ss');
+      const currTime = moment.utc().local().format('HH:mm');
 
       //############# Voltage ###########
       if (!voltage_tmp.find(data => data.x === currTime)) {
@@ -62,7 +62,7 @@ export default (): ReactElement => {
           id: "volts",
           color: "hsl(214, 70%, 50%)",
           data: voltage_tmp.length > 0 ? voltage_tmp : []
-        }])
+        }])   
       }
 
 
@@ -73,7 +73,7 @@ export default (): ReactElement => {
           id: "current",
           color: "hsl(214, 70%, 50%)",
           data: current_tmp.length > 0 ? current_tmp : []
-        }])
+        }])   
       }
 
       //############# Current ###########
@@ -83,9 +83,8 @@ export default (): ReactElement => {
           id: "power",
           color: "hsl(214, 70%, 50%)",
           data: power_tmp.length > 0 ? power_tmp : []
-        }])
+        }])  
       }
-
 
       //############# Current ###########
       if (!energy_tmp.find(data => data.x === currTime)) {
@@ -94,10 +93,15 @@ export default (): ReactElement => {
           id: "energy",
           color: "hsl(214, 70%, 50%)",
           data: energy_tmp.length > 0 ? energy_tmp : []
-        }])
+        }])   
       }
 
-      reduceMessage(500);
+      reduceMessage(24, voltage_tmp, true);
+      reduceMessage(24, current_tmp, true);
+      reduceMessage(24, power_tmp, true);
+      reduceMessage(24, energy_tmp, true);
+
+      reduceMessage(100, dataLogs);
       setLogs([...dataLogs])
     }
     subscribeData(cb);
@@ -105,13 +109,11 @@ export default (): ReactElement => {
 
   }, []);
 
-
-
-  const reduceMessage = (limit: number) => {
+  const reduceMessage = (limit: number, logs: any[], reverse = false) => {
     var totalRows = 0;
-    dataLogs.forEach((a: any, i: number) => {
+    (reverse ? logs.reverse() : logs).forEach((a: any, i: number) => {
       if (totalRows >= limit)
-        dataLogs.splice(i, 1);
+        logs.splice(i, 1);
 
       totalRows++;
     });
@@ -157,7 +159,7 @@ export default (): ReactElement => {
                 </Row>
                 <Row>
                   <Col style={{ width: '100%', height: 350, marginTop: 30 }} sm="12">
-                    <DailyChart data={current} title="Current" legend="Amp" colors="accent"/>
+                    <DailyChart data={current} title="Current" legend="Amp" colors="accent" />
                   </Col>
                 </Row>
                 <Row>
