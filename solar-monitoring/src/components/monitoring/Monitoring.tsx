@@ -15,6 +15,16 @@ const createHours = () => {
   return arr;
 }
 
+const reduceMessage = (limit: number, logs: any[], reverse = false) => {
+  var totalRows = 0;
+  logs.forEach((a: any, i: number) => {
+    if (totalRows >= limit)
+      logs.splice(i, 1);
+
+    totalRows++;
+  });
+}
+
 export default (): ReactElement => {
   const [voltage, setVoltage] = useState<any>([{
     id: "volts",
@@ -49,54 +59,18 @@ export default (): ReactElement => {
     const cb = (data: any) => {
       dataLogs.unshift({
         LogLevelType: 'info',
-        Timestamp: moment.utc(),
+        Timestamp: moment.utc().local(),
         Messages: JSON.stringify(data.sensor)
       });
 
-      const currTime = moment.utc().local().format('HH:mm');
+      const currTime = moment.utc().local().format('HH:mm:ss');
 
-      //############# Voltage ###########
-      if (!voltage_tmp.find(data => data.x === currTime)) {
-        voltage_tmp.push({ x: currTime, y: data.sensor.voltage_usage });
-        setVoltage([{
-          id: "volts",
-          color: "hsl(214, 70%, 50%)",
-          data: voltage_tmp.length > 0 ? voltage_tmp : []
-        }])   
-      }
+      prepareData(voltage_tmp, currTime, data.sensor.voltage_usage, 'volts', setVoltage);
+      prepareData(current_tmp, currTime, data.sensor.current_usage, 'current', setCurrent);
+      prepareData(power_tmp, currTime, data.sensor.active_power, 'power', setPower);
+      prepareData(energy_tmp, currTime, data.sensor.active_energy, 'energy', setEnergy);
 
-
-      //############# Current ###########
-      if (!current_tmp.find(data => data.x === currTime)) {
-        current_tmp.push({ x: currTime, y: data.sensor.current_usage });
-        setCurrent([{
-          id: "current",
-          color: "hsl(214, 70%, 50%)",
-          data: current_tmp.length > 0 ? current_tmp : []
-        }])   
-      }
-
-      //############# Current ###########
-      if (!power_tmp.find(data => data.x === currTime)) {
-        power_tmp.push({ x: currTime, y: data.sensor.active_power });
-        setPower([{
-          id: "power",
-          color: "hsl(214, 70%, 50%)",
-          data: power_tmp.length > 0 ? power_tmp : []
-        }])  
-      }
-
-      //############# Current ###########
-      if (!energy_tmp.find(data => data.x === currTime)) {
-        energy_tmp.push({ x: currTime, y: data.sensor.active_energy });
-        setEnergy([{
-          id: "energy",
-          color: "hsl(214, 70%, 50%)",
-          data: energy_tmp.length > 0 ? energy_tmp : []
-        }])   
-      }
-
-      reduceMessage(24, voltage_tmp, true);
+      reduceMessage(3, voltage_tmp, true);
       reduceMessage(24, current_tmp, true);
       reduceMessage(24, power_tmp, true);
       reduceMessage(24, energy_tmp, true);
@@ -109,15 +83,19 @@ export default (): ReactElement => {
 
   }, []);
 
-  const reduceMessage = (limit: number, logs: any[], reverse = false) => {
-    var totalRows = 0;
-    (reverse ? logs.reverse() : logs).forEach((a: any, i: number) => {
-      if (totalRows >= limit)
-        logs.splice(i, 1);
 
-      totalRows++;
-    });
+  const prepareData = (objectArr: any[], currentTime: any, value: any, name: string, fn: any) => {
+    if (!objectArr.find(data => data.x === currentTime)) {
+      objectArr.push({ x: currentTime, y: value });
+      fn([{
+        id: name,
+        color: "hsl(214, 70%, 50%)",
+        data: objectArr.length > 0 ? objectArr : []
+      }])
+    }
   }
+
+
 
   return (
     <div>
