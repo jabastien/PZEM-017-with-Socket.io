@@ -3,7 +3,7 @@
 #include <SocketIOClient.h>
 #include <ArduinoJson.h>
 #include <Hash.h>
-
+//#include <string.h>
 #include <ModbusMaster.h>
 #include <SoftwareSerial.h>
 #define USE_SERIAL Serial
@@ -60,6 +60,24 @@ ModbusMaster node;
 static uint8_t pzemSlaveAddr = 0x01; // PZEM default address
 #define LEDPIN 16
 
+//#define LED01 D4
+
+
+// void toggleLED(const char *payload, size_t length)
+// {
+//   char subs[5];
+//   memcpy(subs, &payload[9], 4);
+//   subs[4] = '\0';
+
+//   USE_SERIAL.println("LED status: %s\n", subs);
+//   if(strcmp(subs,"true") == 0) {
+//     digitalWrite(LED01, HIGH);
+//   } else {
+//     digitalWrite(LED01, LOW);
+//   }
+//   delay(500);
+// }
+
 void setup() {
   pzemSerial.begin(9600);
   USE_SERIAL.begin(115200); //For debug on cosole (PC)
@@ -67,6 +85,15 @@ void setup() {
   node.begin(pzemSlaveAddr, pzemSerial);
   pinMode(16, OUTPUT);
   digitalWrite(LEDPIN, 0);
+
+
+
+  //#########
+  //  pinMode(LED_BUILTIN, OUTPUT);
+  //  pinMode(LED01, OUTPUT);
+  //  digitalWrite(LED_BUILTIN, HIGH);
+  //###########
+
 
   resetEnergy(pzemSlaveAddr);
 
@@ -100,6 +127,9 @@ void setup() {
   if (client.connected()) {
     client.send("connection", "message", "Connected !!!!");
   }
+
+  //http://www.robojay.us/wp-content/uploads/2016/08/NRB-socket-io.pdf
+  // socket.on("led", toggleLED);
 }
 
 void loop() {
@@ -160,10 +190,10 @@ void loop() {
     //    object["over_power_alarm"] = over_power_alarm;
     //    object["lower_power_alarm"] = lower_power_alarm;
 
-    object["voltage_usage"] = random(2,5);
-    object["current_usage"] = random(2,5);
-    object["active_power"] = random(3,6);
-    object["active_energy"] = random(2,5);
+    object["voltage_usage"] = random(2, 5);
+    object["current_usage"] = random(2, 5);
+    object["active_power"] = random(3, 6);
+    object["active_energy"] = random(2, 5);
     object["over_power_alarm"] = 0;
     object["lower_power_alarm"] = 1;
 
