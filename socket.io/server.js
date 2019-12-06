@@ -21,10 +21,14 @@ io.on('connection', (socket) => {
     // Listen
     socket.on(channel, (msg) => {
         console.log('message:' + JSON.stringify(msg));
-        socket.emit('response', "Hi ESP");
+        //socket.emit('response', "Hi ESP");
+
+        socket.emit("ESP", { "SW1" : 'state:off' });
         // Reply
         io.emit(channel, msg);
     });
+
+    socket.emit("ESP", { "SW1" : 'state:off' });
 
     // io.sockets.emit('led', light);
     // socket.on('toggle', function (state) {

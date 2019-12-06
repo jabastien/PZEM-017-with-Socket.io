@@ -1,26 +1,42 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
+
+#include <Wire.h>
+#include <ACROBOTIC_SSD1306.h>
+
 #include <SocketIOClient.h>
 #include <ArduinoJson.h>
 #include <Hash.h>
-//#include <string.h>
+#include <string.h>
 #include <ModbusMaster.h>
 #include <SoftwareSerial.h>
 #define USE_SERIAL Serial
 
-const char* device_id = "e49n2dix";
-
-
 // WiFi parameters
+const char* device_id = "e49n2dix";
 const char* ssid = "X-WIFI";
-const char* password = "123456787";
-char* IpAddress = "192.168.137.17";
+const char* password = "1234567890";
+char* ServerHost = "192.168.137.13";
 const int ServerPort = 4000;
 
+/*
+  FOR Sensor PZEM-017
+  D3 : RX
+  D4 : TX
+
+  FOR OLED DISPLAY
+  D1 : SCK
+  D2 : SDA
+
+*/
 
 SocketIOClient client;
-SoftwareSerial pzemSerial(D3, D2); //rx, tx
+SoftwareSerial pzemSerial(D3, D4); //rx, tx
 ModbusMaster node;
+
+extern String RID;
+extern String Rname;
+extern String Rcontent;
 
 /*
   RegAddr Description                 Resolution
@@ -63,22 +79,12 @@ static uint8_t pzemSlaveAddr = 0x01; // PZEM default address
 //#define LED01 D4
 
 
-// void toggleLED(const char *payload, size_t length)
-// {
-//   char subs[5];
-//   memcpy(subs, &payload[9], 4);
-//   subs[4] = '\0';
-
-//   USE_SERIAL.println("LED status: %s\n", subs);
-//   if(strcmp(subs,"true") == 0) {
-//     digitalWrite(LED01, HIGH);
-//   } else {
-//     digitalWrite(LED01, LOW);
-//   }
-//   delay(500);
-// }
-
 void setup() {
+
+  // OLED Display
+  InitialOLED();
+
+
   pzemSerial.begin(9600);
   USE_SERIAL.begin(115200); //For debug on cosole (PC)
   //resetEnergy(pzemSlaveAddr);
@@ -87,13 +93,11 @@ void setup() {
   digitalWrite(LEDPIN, 0);
 
 
-
   //#########
   //  pinMode(LED_BUILTIN, OUTPUT);
   //  pinMode(LED01, OUTPUT);
   //  digitalWrite(LED_BUILTIN, HIGH);
   //###########
-
 
   resetEnergy(pzemSlaveAddr);
 
@@ -105,23 +109,29 @@ void setup() {
   }
 
   USE_SERIAL.println();
-  USE_SERIAL.println("Connecting wifi network");
+  printMessage(0, 1, "WIFI Connecting", true);
+  oled.setTextXY(1, 1);
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(500);
     Serial.print(".");
+    oled.putString(".");
   }
 
-  setup_IpAddress();
+  oled.clearDisplay();
+
+  //setup_IpAddress();
 
   USE_SERIAL.println();
   USE_SERIAL.print("WIFI Connected ");
-  String ip = WiFi.localIP().toString();
-  USE_SERIAL.println(ip.c_str());
-  USE_SERIAL.println("Socket.io Server: "); USE_SERIAL.print(IpAddress);
+  String ip = WiFi.localIP().toString();    USE_SERIAL.println(ip.c_str());
+  USE_SERIAL.println("Socket.io Server: "); USE_SERIAL.print(ServerHost);
   USE_SERIAL.println();
 
-  if (!client.connect(IpAddress, ServerPort)) {
+  oled.setTextXY(0, 1); oled.putString("IP Addr : " + ip);
+  oled.setTextXY(1, 1); oled.putString("Server  : " + String(ServerHost));
+
+  if (!client.connect(ServerHost, ServerPort)) {
     Serial.println("connection failed");
   }
   if (client.connected()) {
@@ -129,8 +139,10 @@ void setup() {
   }
 
   //http://www.robojay.us/wp-content/uploads/2016/08/NRB-socket-io.pdf
-  // socket.on("led", toggleLED);
+  //client.on("led", toggleLED);
+
 }
+
 
 void loop() {
   uint8_t result;
@@ -140,8 +152,7 @@ void loop() {
   result = node.readInputRegisters(0x0000, 8); //read the 8 registers of the PZEM-017
   digitalWrite(LEDPIN, 0);
 
-  // if (result == node.ku8MBSuccess)
-  if (true)
+  if (result == node.ku8MBSuccess)
   {
     uint32_t tempdouble = 0x00000000;
 
@@ -183,19 +194,36 @@ void loop() {
     doc["time"] = now;
 
     JsonObject object = doc.createNestedObject("sensor");
-    //    object["voltage_usage"] = voltage_usage;
-    //    object["current_usage"] = current_usage;
-    //    object["active_power"] = active_power;
-    //    object["active_energy"] = active_energy;
-    //    object["over_power_alarm"] = over_power_alarm;
-    //    object["lower_power_alarm"] = lower_power_alarm;
+    object["voltage_usage"] = voltage_usage;
+    object["current_usage"] = current_usage;
+    object["active_power"] = active_power;
+    object["active_energy"] = active_energy;
+    object["over_power_alarm"] = over_power_alarm;
+    object["lower_power_alarm"] = lower_power_alarm;
 
-    object["voltage_usage"] = random(2, 5);
-    object["current_usage"] = random(2, 5);
-    object["active_power"] = random(3, 6);
-    object["active_energy"] = random(2, 5);
-    object["over_power_alarm"] = 0;
-    object["lower_power_alarm"] = 1;
+    oled.setTextXY(2, 1);
+    oled.putString("- S1:OFF S2:OFF S3:OFF -");
+
+    static char outstr[15];
+    oled.setTextXY(4, 1);
+    oled.putString("Voltage :" + String(dtostrf(voltage_usage, 7, 2, outstr)) + "  V");
+
+    oled.setTextXY(5, 1);
+    oled.putString("Current : " + String(dtostrf(current_usage, 7, 3, outstr))  + " A");
+
+    oled.setTextXY(6, 1);
+    oled.putString("Power   : " + String(dtostrf(active_power, 7, 3, outstr)) + " W");
+
+    oled.setTextXY(7, 1);
+    oled.putString("Energy  : " + String(dtostrf(active_energy, 7, 3, outstr)) + " Wh");
+
+    // For test offline mode
+    //    object["voltage_usage"] = random(2, 5);
+    //    object["current_usage"] = random(2, 5);
+    //    object["active_power"] = random(3, 6);
+    //    object["active_energy"] = random(2, 5);
+    //    object["over_power_alarm"] = 0;
+    //    object["lower_power_alarm"] = 1;
 
     //JsonArray alarm = object.createNestedArray("alarm");
     //    alarm.add(48.756080);
@@ -207,21 +235,55 @@ void loop() {
     //client.send("ESP", "message", "ddddddddddddd");
     client.sendJSON("ESP", output);
 
-
-    USE_SERIAL.print(output);
+    //USE_SERIAL.print(output);
   } else {
-    USE_SERIAL.println("Failed to read modbus");
+    clearMessage();
+    printMessage(4, 1, "ERROR !!", false);
+    printMessage(5, 1, "Failed to read modbus", false);
   }
 
   if (!client.connected()) {
-    client.connect(IpAddress, ServerPort);
-
-    USE_SERIAL.print("Reconnecting...");
+    client.connect(ServerHost, ServerPort);
+    clearMessage();
+    printMessage(4, 1, "Reconnecting...", false);
     delay(2000);
   }
 
+  if (client.monitor() && RID == "ESP") {
+    checkRelaySwitch(Rname, Rcontent);
+  }
 
   delay(2000);
+}
+
+void checkRelaySwitch(String switchName, String state) {
+
+  if (switchName == "SW1") {
+    if (state == "state:on") {
+      Serial.println("[" + switchName + "]: ON");
+      //digitalWrite(LedPin, HIGH);
+    }
+    else {
+      Serial.println("[" + switchName + "]: OFF");
+      //digitalWrite(LedPin, LOW);
+    }
+  }
+}
+
+void printMessage(int X, int Y, String message, bool isPrintLn) {
+  oled.setTextXY(X, Y);
+  oled.putString(message);
+  if (isPrintLn)
+    USE_SERIAL.println(message);
+  else
+    USE_SERIAL.print(message);
+}
+
+void clearMessage() {
+  for (int i = 4; i < 8; i++) {
+    oled.setTextXY(i, 1);
+    oled.putString("                              ");
+  }
 }
 
 void resetEnergy(uint8_t slaveAddr) {
@@ -270,4 +332,19 @@ void setup_IpAddress() {
   IPAddress gateway = {192, 168, 137, 1};
   IPAddress subnet = {255, 255, 255, 0};
   WiFi.config(local_ip, gateway, subnet);
+}
+
+void InitialOLED() {
+  Wire.begin();
+  oled.init();                      // Initialze SSD1306 OLED display
+  //oled.setInverseDisplay();
+  oled.deactivateScroll();
+  oled.clearDisplay();              // Clear screen
+  oled.setFont(font5x7);
+  //oled.setFont(font8x8);
+
+  for (int i = 0; i < 8; i++) {
+    oled.setTextXY(i, 1);
+    oled.putString("                              ");
+  }
 }

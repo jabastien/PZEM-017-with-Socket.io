@@ -70,7 +70,7 @@ export default (): ReactElement => {
       prepareData(power_tmp, currTime, data.sensor.active_power, 'power', setPower);
       prepareData(energy_tmp, currTime, data.sensor.active_energy, 'energy', setEnergy);
 
-      reduceMessage(3, voltage_tmp, true);
+      reduceMessage(24, voltage_tmp, true);
       reduceMessage(24, current_tmp, true);
       reduceMessage(24, power_tmp, true);
       reduceMessage(24, energy_tmp, true);
