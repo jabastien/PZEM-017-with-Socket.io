@@ -1,24 +1,3 @@
-#include <Arduino.h>
-#include <ESP8266WiFi.h>
-
-#include <Wire.h>
-#include <ACROBOTIC_SSD1306.h>
-
-#include <SocketIOClient.h>
-#include <ArduinoJson.h>
-#include <Hash.h>
-#include <string.h>
-#include <ModbusMaster.h>
-#include <SoftwareSerial.h>
-#define USE_SERIAL Serial
-
-// WiFi parameters
-const char* device_id = "e49n2dix";
-const char* ssid = "X-WIFI";
-const char* password = "1234567890";
-char* ServerHost = "192.168.137.13";
-const int ServerPort = 4000;
-
 /*
   FOR Sensor PZEM-017
   D3 : RX
@@ -28,17 +7,13 @@ const int ServerPort = 4000;
   D1 : SCK
   D2 : SDA
 
-*/
+  Relay Switch
+  D5
+  D6
+  D7
+  D8
+  D9
 
-SocketIOClient client;
-SoftwareSerial pzemSerial(D3, D4); //rx, tx
-ModbusMaster node;
-
-extern String RID;
-extern String Rname;
-extern String Rcontent;
-
-/*
   RegAddr Description                 Resolution
   0x0000  Voltage value               1LSB correspond to 0.01V
   0x0001  Current value low 16 bits   1LSB correspond to 0.01A
@@ -69,90 +44,101 @@ extern String Rcontent;
 
   Fix complile issue
   https://github.com/esp8266/Arduino/commit/b71872ccca14c410a19371ed6a4838dbaa67e62b
+  
 */
 
+
+#include <Arduino.h>
+#include <ESP8266WiFi.h>
+#include <WiFiClientSecureAxTLS.h>
+#include <ESP8266WebServer.h>
+
+#include <Wire.h>
+#include <ACROBOTIC_SSD1306.h>
+
+#include <SocketIOClient.h>
+#include <ArduinoJson.h>
+#include <Hash.h>
+#include <string.h>
+#include <ModbusMaster.h>
+#include <SoftwareSerial.h>
+#define USE_SERIAL Serial
+
+// config parameters
+#define device_id "e49n2dix"
+#define ssid "X-WIFI"
+#define password "12345678"
+#define ServerHost "192.168.137.17"
+#define ServerPort 4000
+#define SocketIoChannel "ESP"
+
+// Line config
+#define LINE_TOKEN "N0efytMxCMsZETasdsdsdsdasdasdsadadasd"
+
+SocketIOClient socket;
+SoftwareSerial pzemSerial(D3, D4); //rx, tx
+ModbusMaster modbus;
+ESP8266WebServer server(80);
+
+extern String RID;
+extern String Rname;
+extern String Rcontent;
 
 //Indicates that the master needs to read 8 registers with slave address 0x01 and the start address of the register is 0x0000.
 static uint8_t pzemSlaveAddr = 0x01; // PZEM default address
 #define LEDPIN 16
 
-//#define LED01 D4
-
+int SW1 = D5;
+int SW2 = D6;
+int SW3 = D7;
+int SW4 = D8;
+int SW5 = D9;
 
 void setup() {
 
   // OLED Display
   InitialOLED();
 
-
   pzemSerial.begin(9600);
   USE_SERIAL.begin(115200); //For debug on cosole (PC)
   //resetEnergy(pzemSlaveAddr);
-  node.begin(pzemSlaveAddr, pzemSerial);
+  modbus.begin(pzemSlaveAddr, pzemSerial);
   pinMode(16, OUTPUT);
   digitalWrite(LEDPIN, 0);
 
-
-  //#########
-  //  pinMode(LED_BUILTIN, OUTPUT);
-  //  pinMode(LED01, OUTPUT);
-  //  digitalWrite(LED_BUILTIN, HIGH);
-  //###########
-
   resetEnergy(pzemSlaveAddr);
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
+  setup_Wifi();
 
-  if (WiFi.getMode() & WIFI_AP) {
-    WiFi.softAPdisconnect(true);
-  }
-
-  USE_SERIAL.println();
-  printMessage(0, 1, "WIFI Connecting", true);
-  oled.setTextXY(1, 1);
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(500);
-    Serial.print(".");
-    oled.putString(".");
-  }
-
-  oled.clearDisplay();
-
-  //setup_IpAddress();
-
-  USE_SERIAL.println();
-  USE_SERIAL.print("WIFI Connected ");
-  String ip = WiFi.localIP().toString();    USE_SERIAL.println(ip.c_str());
-  USE_SERIAL.println("Socket.io Server: "); USE_SERIAL.print(ServerHost);
-  USE_SERIAL.println();
-
-  oled.setTextXY(0, 1); oled.putString("IP Addr : " + ip);
-  oled.setTextXY(1, 1); oled.putString("Server  : " + String(ServerHost));
-
-  if (!client.connect(ServerHost, ServerPort)) {
+  if (!socket.connect(ServerHost, ServerPort)) {
     Serial.println("connection failed");
   }
-  if (client.connected()) {
-    client.send("connection", "message", "Connected !!!!");
+  if (socket.connected()) {
+    socket.send("connection", "message", "Connected !!!!");
   }
 
-  //http://www.robojay.us/wp-content/uploads/2016/08/NRB-socket-io.pdf
-  //client.on("led", toggleLED);
-
+  handleRelaySwitch();
 }
-
 
 void loop() {
   uint8_t result;
   digitalWrite(LEDPIN, 1);
 
+  //Web server
+  server.handleClient();
+
   //Indicates that the master needs to read 8 registers with slave address 0x01 and the start address of the register is 0x0000.
-  result = node.readInputRegisters(0x0000, 8); //read the 8 registers of the PZEM-017
+  if (modbus.available()) {
+    Serial.println("modbus connected");
+  }
+  result = modbus.readInputRegisters(0x0000, 8); //read the 8 registers of the PZEM-017
   digitalWrite(LEDPIN, 0);
 
-  if (result == node.ku8MBSuccess)
+
+  oled.setTextXY(2, 1);
+  oled.putString("- S1:" + String((digitalRead(SW1) == HIGH) ? "ON" : "OFF") + " S2:" + String((digitalRead(SW2) == HIGH) ? "ON" : "OFF") + " S3:" + String((digitalRead(SW3) == HIGH) ? "ON" : "OFF") + " -");
+
+  if (result == modbus.ku8MBSuccess)
   {
     uint32_t tempdouble = 0x00000000;
 
@@ -168,17 +154,17 @@ void loop() {
     //    float energy = tempdouble / 1000.0f;
 
 
-    float voltage_usage = (float)node.getResponseBuffer(0x0000) / 100.0f;
-    float current_usage = (float)node.getResponseBuffer(0x0001) / 1000.000f;
+    float voltage_usage = (float)modbus.getResponseBuffer(0x0000) / 100.0f;
+    float current_usage = (float)modbus.getResponseBuffer(0x0001) / 1000.000f;
 
-    tempdouble =  (node.getResponseBuffer(0x0003) << 16) + node.getResponseBuffer(0x0002);
+    tempdouble =  (modbus.getResponseBuffer(0x0003) << 16) + modbus.getResponseBuffer(0x0002);
     float active_power = tempdouble / 100.0f;
 
-    tempdouble =  (node.getResponseBuffer(0x0005) << 16) + node.getResponseBuffer(0x0004);
+    tempdouble =  (modbus.getResponseBuffer(0x0005) << 16) + modbus.getResponseBuffer(0x0004);
     float active_energy = tempdouble;
 
-    uint16_t over_power_alarm = node.getResponseBuffer(0x0006);
-    uint16_t lower_power_alarm = node.getResponseBuffer(0x0007);
+    uint16_t over_power_alarm = modbus.getResponseBuffer(0x0006);
+    uint16_t lower_power_alarm = modbus.getResponseBuffer(0x0007);
 
     USE_SERIAL.print("VOLTAGE:           ");   USE_SERIAL.print(voltage_usage);       USE_SERIAL.println(" V");   // V
     USE_SERIAL.print("CURRENT_USAGE:     ");   USE_SERIAL.print(current_usage, 3);    USE_SERIAL.println(" A");   // A
@@ -200,9 +186,6 @@ void loop() {
     object["active_energy"] = active_energy;
     object["over_power_alarm"] = over_power_alarm;
     object["lower_power_alarm"] = lower_power_alarm;
-
-    oled.setTextXY(2, 1);
-    oled.putString("- S1:OFF S2:OFF S3:OFF -");
 
     static char outstr[15];
     oled.setTextXY(4, 1);
@@ -232,42 +215,64 @@ void loop() {
     String output;
     serializeJson(doc, output);
 
-    //client.send("ESP", "message", "ddddddddddddd");
-    client.sendJSON("ESP", output);
+    //socket.send(SocketIoChannel, "message", "ddddddddddddd");
+    socket.sendJSON(SocketIoChannel, output);
 
-    //USE_SERIAL.print(output);
+    USE_SERIAL.print(output);
   } else {
     clearMessage();
     printMessage(4, 1, "ERROR !!", false);
-    printMessage(5, 1, "Failed to read modbus", false);
+    printMessage(5, 1, "Failed to read modbus", true);
   }
 
-  if (!client.connected()) {
-    client.connect(ServerHost, ServerPort);
+  if (!socket.connected()) {
+    socket.connect(ServerHost, ServerPort);
     clearMessage();
-    printMessage(4, 1, "Reconnecting...", false);
+    printMessage(4, 1, "Socket.io reconnecting...", false);
     delay(2000);
   }
 
-  if (client.monitor() && RID == "ESP") {
+  if (socket.monitor() && RID == SocketIoChannel) {
     checkRelaySwitch(Rname, Rcontent);
   }
 
   delay(2000);
 }
 
-void checkRelaySwitch(String switchName, String state) {
+void checkRelaySwitch(String switchName, String payload) {
+  Serial.println("State => " + payload);
+  if (switchName == "") return;
 
-  if (switchName == "SW1") {
-    if (state == "state:on") {
-      Serial.println("[" + switchName + "]: ON");
-      //digitalWrite(LedPin, HIGH);
-    }
-    else {
-      Serial.println("[" + switchName + "]: OFF");
-      //digitalWrite(LedPin, LOW);
-    }
+  if (switchName == "SW1")
+    digitalWrite(SW1, (payload == "state:on") ? HIGH : LOW);
+
+  if (switchName == "SW2") {
+    digitalWrite(SW2, (payload == "state:on") ? HIGH : LOW);
   }
+
+  if (switchName == "SW3")
+    digitalWrite(SW3, (payload == "state:on") ? HIGH : LOW);
+
+  if (switchName == "SW4")
+    digitalWrite(SW4, (payload == "state:on") ? HIGH : LOW);
+
+  if (switchName == "SW5")
+    digitalWrite(SW5, (payload == "state:on") ? HIGH : LOW);
+
+  String relayStatus = (payload == "state:on") ? "ON" : "OFF";
+  Line_Notify("\r\n===============\r\n - Battery Status - \r\nVOLTAGE: 12V\r\nCURRENT_USAGE: 0.23W\r\nACTIVE_POWER: 22W\r\nACTIVE_ENERGY: 44WH\r\n\r\n===============\r\n- Relay Switch Status -\r\n" + switchName + ":" + relayStatus);
+  Line_Notify(relaySwitchStatus());
+  Serial.println("[" + switchName + "]: " + relayStatus);
+}
+
+String relaySwitchStatus() {
+  String status = "\r\nRelay Switch Status";
+  status += "\r\nSW1:" + String((digitalRead(SW1) == HIGH) ? "ON" : "OFF");
+  status += "\r\nSW2:" + String((digitalRead(SW2) == HIGH) ? "ON" : "OFF");
+  status += "\r\nSW3:" + String((digitalRead(SW3) == HIGH) ? "ON" : "OFF");
+  status += "\r\nSW4:" + String((digitalRead(SW4) == HIGH) ? "ON" : "OFF");
+  status += "\r\nSW5:" + String((digitalRead(SW5) == HIGH) ? "ON" : "OFF");
+  return status;
 }
 
 void printMessage(int X, int Y, String message, bool isPrintLn) {
@@ -326,6 +331,37 @@ void changeAddress(uint8_t OldslaveAddr, uint8_t NewslaveAddr)
   delay(1000);
 }
 
+void setup_Wifi() {
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  if (WiFi.getMode() & WIFI_AP) {
+    WiFi.softAPdisconnect(true);
+  }
+
+  USE_SERIAL.println();
+  printMessage(0, 1, "WIFI Connecting", true);
+  oled.setTextXY(1, 1);
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+    oled.putString(".");
+  }
+
+  //setup_IpAddress();
+
+  oled.clearDisplay();
+
+  USE_SERIAL.println();
+  USE_SERIAL.print("WIFI Connected ");
+  String ip = WiFi.localIP().toString();    USE_SERIAL.println(ip.c_str());
+  USE_SERIAL.println("Socket.io Server: "); USE_SERIAL.print(ServerHost);
+  USE_SERIAL.println();
+
+  oled.setTextXY(0, 1); oled.putString("IP Addr : " + ip);
+  oled.setTextXY(1, 1); oled.putString("Server  : " + String(ServerHost));
+}
 
 void setup_IpAddress() {
   IPAddress local_ip = {192, 168, 137, 144};
@@ -347,4 +383,124 @@ void InitialOLED() {
     oled.setTextXY(i, 1);
     oled.putString("                              ");
   }
+}
+
+
+void Line_Notify(String message) {
+  axTLS::WiFiClientSecure client;
+  if (!client.connect("notify-api.line.me", 443)) {
+    Serial.println("connection failed");
+    return;
+  }
+
+  String req = "";
+  req += "POST /api/notify HTTP/1.1\r\n";
+  req += "Host: notify-api.line.me\r\n";
+  req += "Authorization: Bearer " + String(LINE_TOKEN) + "\r\n";
+  req += "Cache-Control: no-cache\r\n";
+  req += "User-Agent: ESP8266\r\n";
+  req += "Content-Type: application/x-www-form-urlencoded\r\n";
+  req += "Content-Length: " + String(String("message=" + message).length()) + "\r\n";
+  req += "\r\n";
+  req += "message=" + message;
+  Serial.println(req);
+  client.print(req);
+  delay(20);
+
+  Serial.println("-------------");
+  while (client.connected()) {
+    String line = client.readStringUntil('\n');
+    if (line == "\r") {
+      break;
+    }
+    Serial.println(line);
+  }
+  Serial.println("-------------");
+}
+
+void handleRoot() {
+  String cmd;
+  cmd += "<!DOCTYPE HTML>\r\n";
+  cmd += "<html>\r\n";
+  cmd += "<head>";
+  cmd += "<meta http-equiv='refresh' content='5'/>";
+  cmd += "</head>";
+
+  cmd += (digitalRead(SW1) == HIGH) ? "<br/>SW1  : ON" : "<br/>SW1  : OFF";
+  cmd += (digitalRead(SW2) == HIGH) ? "<br/>SW2  : ON" : "<br/>SW2  : OFF";
+  cmd += (digitalRead(SW3) == HIGH) ? "<br/>SW3  : ON" : "<br/>SW3  : OFF";
+  cmd += (digitalRead(SW4) == HIGH) ? "<br/>SW4  : ON" : "<br/>SW4  : OFF";
+  cmd += (digitalRead(SW5) == HIGH) ? "<br/>SW5  : ON" : "<br/>SW5  : OFF";
+
+  cmd += "<html>\r\n";
+  server.send(200, "text/html", cmd);
+}
+
+void handleRelaySwitch() {
+
+  pinMode(SW1, OUTPUT); digitalWrite(SW1, LOW);
+  pinMode(SW2, OUTPUT); digitalWrite(SW2, LOW);
+  pinMode(SW3, OUTPUT); digitalWrite(SW3, LOW);
+  pinMode(SW4, OUTPUT); digitalWrite(SW4, LOW);
+  pinMode(SW5, OUTPUT); digitalWrite(SW5, LOW);
+
+  server.on("/", handleRoot);
+  server.on("/sw1=1", []() {
+    server.send(200, "text/plain", "SW1 = ON"); digitalWrite(SW1, HIGH);
+  });
+
+  server.on("/sw1=0", []() {
+    server.send(200, "text/plain", "SW1 = OFF");  digitalWrite(SW1, LOW);
+  });
+
+  server.on("/sw2=1", []() {
+    server.send(200, "text/plain", "SW2 = ON"); digitalWrite(SW2, HIGH);
+  });
+
+  server.on("/sw2=0", []() {
+    server.send(200, "text/plain", "SW2 = OFF");  digitalWrite(SW2, LOW);
+  });
+
+  server.on("/sw3=1", []() {
+    server.send(200, "text/plain", "SW3 = ON"); digitalWrite(SW3, HIGH);
+  });
+
+  server.on("/sw3=0", []() {
+    server.send(200, "text/plain", "SW3 = OFF");  digitalWrite(SW3, LOW);
+  });
+
+  server.on("/sw4=1", []() {
+    server.send(200, "text/plain", "SW4 = ON"); digitalWrite(SW4, HIGH);
+  });
+
+  server.on("/sw4=0", []() {
+    server.send(200, "text/plain", "SW4 = OFF");  digitalWrite(SW4, LOW);
+  });
+
+  server.on("/sw5=1", []() {
+    server.send(200, "text/plain", "SW5 = ON"); digitalWrite(SW5, HIGH);
+  });
+
+  server.on("/sw5=0", []() {
+    server.send(200, "text/plain", "SW5 = OFF");  digitalWrite(SW5, LOW);
+  });
+
+  server.onNotFound(handleNotFound);
+  server.begin();
+  Serial.println("HTTP server started");
+}
+
+void handleNotFound() {
+  String message = "File Not Found\n\n";
+  message += "URI: ";
+  message += server.uri();
+  message += "\nMethod: ";
+  message += (server.method() == HTTP_GET) ? "GET" : "POST";
+  message += "\nArguments: ";
+  message += server.args();
+  message += "\n";
+  for (uint8_t i = 0; i < server.args(); i++) {
+    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
+  }
+  server.send(404, "text/plain", message);
 }

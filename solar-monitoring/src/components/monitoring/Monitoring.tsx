@@ -1,8 +1,11 @@
 import React, { ReactElement, useState, useEffect } from "react";
 import { Container, Row, Col, NavLink, TabContent, TabPane, Nav, NavItem } from "reactstrap";
 import classnames from 'classnames';
+
+//init module
 import DailyChart from "../charts/DailyChart";
 import ConsoleLogs from '../console/ConsoleLogs'
+import GaugeMeter from '../meters/gaugeMeter';
 import moment from 'moment'
 import { subscribeData, unsubscribe } from '../socketio/client'
 
@@ -42,6 +45,7 @@ export default (): ReactElement => {
 
   const [logs, setLogs] = useState<any>([]);
   const [activeTab, setActiveTab] = useState('1');
+
 
   let dataLogs: any[] = [];
 
@@ -130,6 +134,7 @@ export default (): ReactElement => {
           <Row>
             <Col sm="8">
               <Container>
+          
                 <Row>
                   <Col style={{ width: '100%', height: 350, marginTop: 10 }} sm="12">
                     <DailyChart data={voltage} title="Voltage" legend="Volts" colors="category10" />

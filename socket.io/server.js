@@ -23,12 +23,12 @@ io.on('connection', (socket) => {
         console.log('message:' + JSON.stringify(msg));
         //socket.emit('response', "Hi ESP");
 
-        socket.emit("ESP", { "SW1" : 'state:off' });
+        //socket.emit("ESP", { "SW3" : 'state:on' });
         // Reply
-        io.emit(channel, msg);
+        //io.emit(channel, msg);
     });
 
-    socket.emit("ESP", { "SW1" : 'state:off' });
+    //socket.emit("ESP", { "SW1" : 'state:on' });
 
     // io.sockets.emit('led', light);
     // socket.on('toggle', function (state) {
