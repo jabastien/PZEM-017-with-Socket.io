@@ -14,6 +14,8 @@
   D8
   D9
 
+  Note: For Relay switch i am using active "Low"
+
   RegAddr Description                 Resolution
   0x0000  Voltage value               1LSB correspond to 0.01V
   0x0001  Current value low 16 bits   1LSB correspond to 0.01A
@@ -44,7 +46,7 @@
 
   Fix complile issue
   https://github.com/esp8266/Arduino/commit/b71872ccca14c410a19371ed6a4838dbaa67e62b
-  
+
 */
 
 
@@ -67,13 +69,16 @@
 // config parameters
 #define device_id "e49n2dix"
 #define ssid "X-WIFI"
-#define password "12345678"
-#define ServerHost "192.168.137.17"
+#define password "1234567"
+#define ServerHost "192.168.137.13"
 #define ServerPort 4000
 #define SocketIoChannel "ESP"
 
 // Line config
-#define LINE_TOKEN "N0efytMxCMsZETasdsdsdsdasdasdsadadasd"
+#define LINE_TOKEN "N0efytMxCMsZETa4---TEST---dsfsdfsdfdsfdr"
+
+float ActiveVoltageInverter = 13.4;
+float InActiveVoltageInverter = 12.15;
 
 SocketIOClient socket;
 SoftwareSerial pzemSerial(D3, D4); //rx, tx
@@ -86,7 +91,6 @@ extern String Rcontent;
 
 //Indicates that the master needs to read 8 registers with slave address 0x01 and the start address of the register is 0x0000.
 static uint8_t pzemSlaveAddr = 0x01; // PZEM default address
-#define LEDPIN 16
 
 int SW1 = D5;
 int SW2 = D6;
@@ -103,9 +107,6 @@ void setup() {
   USE_SERIAL.begin(115200); //For debug on cosole (PC)
   //resetEnergy(pzemSlaveAddr);
   modbus.begin(pzemSlaveAddr, pzemSerial);
-  pinMode(16, OUTPUT);
-  digitalWrite(LEDPIN, 0);
-
   resetEnergy(pzemSlaveAddr);
 
   setup_Wifi();
@@ -120,23 +121,18 @@ void setup() {
   handleRelaySwitch();
 }
 
+bool inverterStarted  = false;
 void loop() {
   uint8_t result;
-  digitalWrite(LEDPIN, 1);
 
   //Web server
   server.handleClient();
 
   //Indicates that the master needs to read 8 registers with slave address 0x01 and the start address of the register is 0x0000.
-  if (modbus.available()) {
-    Serial.println("modbus connected");
-  }
   result = modbus.readInputRegisters(0x0000, 8); //read the 8 registers of the PZEM-017
-  digitalWrite(LEDPIN, 0);
-
 
   oled.setTextXY(2, 1);
-  oled.putString("- S1:" + String((digitalRead(SW1) == HIGH) ? "ON" : "OFF") + " S2:" + String((digitalRead(SW2) == HIGH) ? "ON" : "OFF") + " S3:" + String((digitalRead(SW3) == HIGH) ? "ON" : "OFF") + " -");
+  oled.putString("- S1:" + String((digitalRead(SW1) == LOW) ? "ON" : "OFF") + " S2:" + String((digitalRead(SW2) == LOW) ? "ON" : "OFF") + " S3:" + String((digitalRead(SW3) == LOW) ? "ON" : "OFF") + " -");
 
   if (result == modbus.ku8MBSuccess)
   {
@@ -166,17 +162,29 @@ void loop() {
     uint16_t over_power_alarm = modbus.getResponseBuffer(0x0006);
     uint16_t lower_power_alarm = modbus.getResponseBuffer(0x0007);
 
-    USE_SERIAL.print("VOLTAGE:           ");   USE_SERIAL.print(voltage_usage);       USE_SERIAL.println(" V");   // V
-    USE_SERIAL.print("CURRENT_USAGE:     ");   USE_SERIAL.print(current_usage, 3);    USE_SERIAL.println(" A");   // A
-    USE_SERIAL.print("ACTIVE_POWER:      ");   USE_SERIAL.print(active_power, 3);     USE_SERIAL.println(" W");   // W
-    USE_SERIAL.print("ACTIVE_ENERGY:     ");   USE_SERIAL.print(active_energy, 3);    USE_SERIAL.println(" Wh");  //Kwh
-    USE_SERIAL.print("OVER_POWER_ALARM:  ");   USE_SERIAL.println(over_power_alarm);
-    USE_SERIAL.println("====================================================");
+    //    USE_SERIAL.print("VOLTAGE:           ");   USE_SERIAL.print(voltage_usage);       USE_SERIAL.println(" V");   // V
+    //    USE_SERIAL.print("CURRENT_USAGE:     ");   USE_SERIAL.print(current_usage, 3);    USE_SERIAL.println(" A");   // A
+    //    USE_SERIAL.print("ACTIVE_POWER:      ");   USE_SERIAL.print(active_power, 3);     USE_SERIAL.println(" W");   // W
+    //    USE_SERIAL.print("ACTIVE_ENERGY:     ");   USE_SERIAL.print(active_energy, 3);    USE_SERIAL.println(" Wh");  // Kwh
+    //    USE_SERIAL.print("OVER_POWER_ALARM:  ");   USE_SERIAL.println(over_power_alarm);
+    //    USE_SERIAL.println("====================================================");
+
+    String batteryStatusMessage = "\r\n===============\r\n - Battery Status - \r\n";
+    batteryStatusMessage += "VOLTAGE: " + String(voltage_usage) + "V\r\n";
+    batteryStatusMessage += "CURRENT_USAGE: " + String(current_usage) + "A\r\n";
+    batteryStatusMessage += "ACTIVE_POWER: " + String(active_power) + "W\r\n";
+    batteryStatusMessage += "ACTIVE_ENERGY: " + String(active_energy) + "WH";
+
+    bool activeInverter = (voltage_usage >= ActiveVoltageInverter) ? true : (voltage_usage <= InActiveVoltageInverter) ? false : inverterStarted;
+    if (inverterStarted != activeInverter) {
+      actionRelaySwitch("SW1", activeInverter ? "state:on" : "state:off", batteryStatusMessage);
+      inverterStarted = activeInverter;
+      USE_SERIAL.println("inverterStarted: " + String(inverterStarted) + " activeInverter:" + String(activeInverter));
+    }
 
     uint64_t now = millis();
     StaticJsonDocument<1024> doc;
     doc["data"] = "ESP8266";
-    doc["version"] = "v1.0";
     doc["time"] = now;
 
     JsonObject object = doc.createNestedObject("sensor");
@@ -233,45 +241,48 @@ void loop() {
   }
 
   if (socket.monitor() && RID == SocketIoChannel) {
-    checkRelaySwitch(Rname, Rcontent);
+    actionRelaySwitch(Rname, Rcontent, "");
   }
 
   delay(2000);
 }
 
-void checkRelaySwitch(String switchName, String payload) {
+void actionRelaySwitch(String switchName, String payload, String messageInfo) {
   Serial.println("State => " + payload);
   if (switchName == "") return;
 
-  if (switchName == "SW1")
-    digitalWrite(SW1, (payload == "state:on") ? HIGH : LOW);
+  if (switchName == "SW1") //Inverter
+    digitalWrite(SW1, (payload == "state:on") ? LOW : HIGH);
 
   if (switchName == "SW2") {
-    digitalWrite(SW2, (payload == "state:on") ? HIGH : LOW);
+    digitalWrite(SW2, (payload == "state:on") ? LOW : HIGH);
   }
 
   if (switchName == "SW3")
-    digitalWrite(SW3, (payload == "state:on") ? HIGH : LOW);
+    digitalWrite(SW3, (payload == "state:on") ? LOW : HIGH);
 
   if (switchName == "SW4")
-    digitalWrite(SW4, (payload == "state:on") ? HIGH : LOW);
+    digitalWrite(SW4, (payload == "state:on") ? LOW : HIGH);
 
   if (switchName == "SW5")
-    digitalWrite(SW5, (payload == "state:on") ? HIGH : LOW);
+    digitalWrite(SW5, (payload == "state:on") ? LOW : HIGH);
 
   String relayStatus = (payload == "state:on") ? "ON" : "OFF";
-  Line_Notify("\r\n===============\r\n - Battery Status - \r\nVOLTAGE: 12V\r\nCURRENT_USAGE: 0.23W\r\nACTIVE_POWER: 22W\r\nACTIVE_ENERGY: 44WH\r\n\r\n===============\r\n- Relay Switch Status -\r\n" + switchName + ":" + relayStatus);
+  String msq = (messageInfo != "") ? messageInfo : "";
+  msq += "\r\n===============\r\n- Relay Switch Status -\r\n" + switchName + ":" + relayStatus;
+  Line_Notify(msq);
+
   Line_Notify(relaySwitchStatus());
   Serial.println("[" + switchName + "]: " + relayStatus);
 }
 
 String relaySwitchStatus() {
   String status = "\r\nRelay Switch Status";
-  status += "\r\nSW1:" + String((digitalRead(SW1) == HIGH) ? "ON" : "OFF");
-  status += "\r\nSW2:" + String((digitalRead(SW2) == HIGH) ? "ON" : "OFF");
-  status += "\r\nSW3:" + String((digitalRead(SW3) == HIGH) ? "ON" : "OFF");
-  status += "\r\nSW4:" + String((digitalRead(SW4) == HIGH) ? "ON" : "OFF");
-  status += "\r\nSW5:" + String((digitalRead(SW5) == HIGH) ? "ON" : "OFF");
+  status += "\r\nSW1:" + String((digitalRead(SW1) == LOW) ? "ON" : "OFF");
+  status += "\r\nSW2:" + String((digitalRead(SW2) == LOW) ? "ON" : "OFF");
+  status += "\r\nSW3:" + String((digitalRead(SW3) == LOW) ? "ON" : "OFF");
+  status += "\r\nSW4:" + String((digitalRead(SW4) == LOW) ? "ON" : "OFF");
+  status += "\r\nSW5:" + String((digitalRead(SW5) == LOW) ? "ON" : "OFF");
   return status;
 }
 
@@ -426,11 +437,11 @@ void handleRoot() {
   cmd += "<meta http-equiv='refresh' content='5'/>";
   cmd += "</head>";
 
-  cmd += (digitalRead(SW1) == HIGH) ? "<br/>SW1  : ON" : "<br/>SW1  : OFF";
-  cmd += (digitalRead(SW2) == HIGH) ? "<br/>SW2  : ON" : "<br/>SW2  : OFF";
-  cmd += (digitalRead(SW3) == HIGH) ? "<br/>SW3  : ON" : "<br/>SW3  : OFF";
-  cmd += (digitalRead(SW4) == HIGH) ? "<br/>SW4  : ON" : "<br/>SW4  : OFF";
-  cmd += (digitalRead(SW5) == HIGH) ? "<br/>SW5  : ON" : "<br/>SW5  : OFF";
+  cmd += (digitalRead(SW1) == LOW) ? "<br/>SW1  : ON" : "<br/>SW1  : OFF";
+  cmd += (digitalRead(SW2) == LOW) ? "<br/>SW2  : ON" : "<br/>SW2  : OFF";
+  cmd += (digitalRead(SW3) == LOW) ? "<br/>SW3  : ON" : "<br/>SW3  : OFF";
+  cmd += (digitalRead(SW4) == LOW) ? "<br/>SW4  : ON" : "<br/>SW4  : OFF";
+  cmd += (digitalRead(SW5) == LOW) ? "<br/>SW5  : ON" : "<br/>SW5  : OFF";
 
   cmd += "<html>\r\n";
   server.send(200, "text/html", cmd);
@@ -438,51 +449,51 @@ void handleRoot() {
 
 void handleRelaySwitch() {
 
-  pinMode(SW1, OUTPUT); digitalWrite(SW1, LOW);
-  pinMode(SW2, OUTPUT); digitalWrite(SW2, LOW);
-  pinMode(SW3, OUTPUT); digitalWrite(SW3, LOW);
-  pinMode(SW4, OUTPUT); digitalWrite(SW4, LOW);
-  pinMode(SW5, OUTPUT); digitalWrite(SW5, LOW);
+  pinMode(SW1, OUTPUT); digitalWrite(SW1, HIGH);
+  pinMode(SW2, OUTPUT); digitalWrite(SW2, HIGH);
+  pinMode(SW3, OUTPUT); digitalWrite(SW3, HIGH);
+  pinMode(SW4, OUTPUT); digitalWrite(SW4, HIGH);
+  pinMode(SW5, OUTPUT); digitalWrite(SW5, HIGH);
 
   server.on("/", handleRoot);
   server.on("/sw1=1", []() {
-    server.send(200, "text/plain", "SW1 = ON"); digitalWrite(SW1, HIGH);
+    server.send(200, "text/plain", "SW1 = ON"); digitalWrite(SW1, LOW);
   });
 
   server.on("/sw1=0", []() {
-    server.send(200, "text/plain", "SW1 = OFF");  digitalWrite(SW1, LOW);
+    server.send(200, "text/plain", "SW1 = OFF");  digitalWrite(SW1, HIGH);
   });
 
   server.on("/sw2=1", []() {
-    server.send(200, "text/plain", "SW2 = ON"); digitalWrite(SW2, HIGH);
+    server.send(200, "text/plain", "SW2 = ON"); digitalWrite(SW2, LOW);
   });
 
   server.on("/sw2=0", []() {
-    server.send(200, "text/plain", "SW2 = OFF");  digitalWrite(SW2, LOW);
+    server.send(200, "text/plain", "SW2 = OFF");  digitalWrite(SW2, HIGH);
   });
 
   server.on("/sw3=1", []() {
-    server.send(200, "text/plain", "SW3 = ON"); digitalWrite(SW3, HIGH);
+    server.send(200, "text/plain", "SW3 = ON"); digitalWrite(SW3, LOW);
   });
 
   server.on("/sw3=0", []() {
-    server.send(200, "text/plain", "SW3 = OFF");  digitalWrite(SW3, LOW);
+    server.send(200, "text/plain", "SW3 = OFF");  digitalWrite(SW3, HIGH);
   });
 
   server.on("/sw4=1", []() {
-    server.send(200, "text/plain", "SW4 = ON"); digitalWrite(SW4, HIGH);
+    server.send(200, "text/plain", "SW4 = ON"); digitalWrite(SW4, LOW);
   });
 
   server.on("/sw4=0", []() {
-    server.send(200, "text/plain", "SW4 = OFF");  digitalWrite(SW4, LOW);
+    server.send(200, "text/plain", "SW4 = OFF");  digitalWrite(SW4, HIGH);
   });
 
   server.on("/sw5=1", []() {
-    server.send(200, "text/plain", "SW5 = ON"); digitalWrite(SW5, HIGH);
+    server.send(200, "text/plain", "SW5 = ON"); digitalWrite(SW5, LOW);
   });
 
   server.on("/sw5=0", []() {
-    server.send(200, "text/plain", "SW5 = OFF");  digitalWrite(SW5, LOW);
+    server.send(200, "text/plain", "SW5 = OFF");  digitalWrite(SW5, HIGH);
   });
 
   server.onNotFound(handleNotFound);
