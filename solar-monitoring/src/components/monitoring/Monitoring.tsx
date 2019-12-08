@@ -29,6 +29,11 @@ const reduceMessage = (limit: number, logs: any[], reverse = false) => {
 }
 
 export default (): ReactElement => {
+
+  const [voltageGauge, setVoltageGauge] = useState<number>(0);
+  const [currentGauge, setCurrentGauge] = useState<number>(0);
+  const [energyGauge, setEnergyGauge] = useState<number>(0);
+
   const [voltage, setVoltage] = useState<any>([{
     id: "volts",
     color: "hsl(214, 70%, 50%)",
@@ -69,6 +74,10 @@ export default (): ReactElement => {
 
       const currTime = moment.utc().local().format('HH:mm:ss');
 
+      setVoltageGauge(data.sensor.voltage_usage);
+      setCurrentGauge(data.sensor.current_usage);
+      setEnergyGauge(data.sensor.active_power);
+
       prepareData(voltage_tmp, currTime, data.sensor.voltage_usage, 'volts', setVoltage);
       prepareData(current_tmp, currTime, data.sensor.current_usage, 'current', setCurrent);
       prepareData(power_tmp, currTime, data.sensor.active_power, 'power', setPower);
@@ -99,8 +108,6 @@ export default (): ReactElement => {
     }
   }
 
-
-
   return (
     <div>
       <Nav tabs>
@@ -112,47 +119,79 @@ export default (): ReactElement => {
             Daily
           </NavLink>
         </NavItem>
-        <NavItem>
-          <NavLink
-            className={classnames({ active: activeTab === '2' })}
-            onClick={() => { toggle('2'); }}
-          >
-            Weekly
-          </NavLink>
-        </NavItem>
-        <NavItem>
-          <NavLink
-            className={classnames({ active: activeTab === '3' })}
-            onClick={() => { toggle('3'); }}
-          >
-            Monthly
-          </NavLink>
-        </NavItem>
       </Nav>
       <TabContent activeTab={activeTab}>
         <TabPane tabId="1">
           <Row>
             <Col sm="8">
               <Container>
-          
+
                 <Row>
                   <Col style={{ width: '100%', height: 350, marginTop: 10 }} sm="12">
                     <DailyChart data={voltage} title="Voltage" legend="Volts" colors="category10" />
                   </Col>
                 </Row>
+
                 <Row>
-                  <Col style={{ width: '100%', height: 350, marginTop: 30 }} sm="12">
-                    <DailyChart data={current} title="Current" legend="Amp" colors="accent" />
+                  <Col>
+                    <GaugeMeter title="" name="ssss" chartTitle="Voltage (V)"
+                      min={0}
+                      max={20}
+                      data={voltageGauge}
+                      plotBands={[{
+                        from: 11.1,
+                        to: 14.5,
+                        color: '#55BF3B' // green
+                      }, {
+                        from: 14.6,
+                        to: 20,
+                        color: '#DDDF0D' // yellow
+                      }, {
+                        from: 11.0,
+                        to: 0,
+                        color: '#DF5353' // red
+                      }]}
+                    />
                   </Col>
-                </Row>
-                <Row>
-                  <Col style={{ width: '100%', height: 350, marginTop: 30 }} sm="12">
-                    <DailyChart data={power} title="Power" legend="Watt" colors="dark2" />
+                  <Col>
+                    <GaugeMeter title="" name="ssss" chartTitle="Current (A)"
+                      min={0}
+                      max={10}
+                      data={currentGauge}
+                      plotBands={[{
+                        from: 0,
+                        to: 6,
+                        color: '#55BF3B' // green
+                      }, {
+                        from: 7,
+                        to: 8,
+                        color: '#DDDF0D' // yellow
+                      }, {
+                        from: 9,
+                        to: 10,
+                        color: '#DF5353' // red
+                      }]}
+                    />
                   </Col>
-                </Row>
-                <Row>
-                  <Col style={{ width: '100%', height: 350, marginTop: 30 }} sm="12">
-                    <DailyChart data={energy} title="Energy" legend="Whr" colors="nivo" />
+                  <Col>
+                    <GaugeMeter title="" name="ssss" chartTitle="Watt (W)"
+                      min={0}
+                      max={2000}
+                      data={energyGauge}
+                      plotBands={[{
+                        from: 0,
+                        to: 600,
+                        color: '#55BF3B' // green
+                      }, {
+                        from: 601,
+                        to: 1500,
+                        color: '#DDDF0D' // yellow
+                      }, {
+                        from: 1501,
+                        to: 2000,
+                        color: '#DF5353' // red
+                      }]}
+                    />
                   </Col>
                 </Row>
               </Container>
@@ -163,23 +202,6 @@ export default (): ReactElement => {
             </Col>
           </Row>
         </TabPane>
-
-        <TabPane tabId="2">
-          <Row>
-            <Col sm="12">
-
-            </Col>
-          </Row>
-        </TabPane>
-
-        <TabPane tabId="3">
-          <Row>
-            <Col sm="12">
-
-            </Col>
-          </Row>
-        </TabPane>
-
       </TabContent>
     </div>
   );

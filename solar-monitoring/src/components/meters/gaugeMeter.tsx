@@ -1,14 +1,18 @@
 import React, { useState, useEffect, ReactElement } from 'react';
 import Highcharts from 'highcharts'
 import HighchartsReact from 'highcharts-react-official'
-import HC_more from "highcharts/highcharts-more"; 
-import  './gauge.css';
+import HC_more from "highcharts/highcharts-more";
+import './gauge.css';
 
 HC_more(Highcharts);
 
 interface GaugeMeterProps {
     title: string;
     name: string;
+    min: number,
+    max: number,
+    data: number,
+    plotBands: any[],
     chartTitle: string | 'km/h'
 }
 
@@ -17,7 +21,6 @@ const GaugeMeter = (props: GaugeMeterProps): ReactElement => {
     const [options, setOptions] = useState();
 
     useEffect(() => {
-
         setOptions({
             title: {
                 text: props.title
@@ -63,8 +66,8 @@ const GaugeMeter = (props: GaugeMeterProps): ReactElement => {
             },
             // the value axis
             yAxis: {
-                min: 0,
-                max: 200,
+                min: props.min,
+                max: props.max,
 
                 minorTickInterval: 'auto',
                 minorTickWidth: 1,
@@ -84,29 +87,26 @@ const GaugeMeter = (props: GaugeMeterProps): ReactElement => {
                 title: {
                     text: props.chartTitle
                 },
-                plotBands: [{
-                    from: 0,
-                    to: 120,
-                    color: '#55BF3B' // green
-                }, {
-                    from: 120,
-                    to: 160,
-                    color: '#DDDF0D' // yellow
-                }, {
-                    from: 160,
-                    to: 200,
-                    color: '#DF5353' // red
-                }]
+                plotBands: props.plotBands
             },
             series: [{
                 name: props.name,
-                data: [80],
+                data: [props.data],
                 tooltip: {
                     valueSuffix: ' ' + props.chartTitle
                 }
             }]
         });
     }, [])
+
+    useEffect(() => {
+        if (options) {
+            let updateObject = { ...options };
+            updateObject.series[0].data = [props.data];
+            setOptions(updateObject);
+        }
+
+    }, [props.data])
 
     return <HighchartsReact
         constructorType={"chart"}
