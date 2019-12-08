@@ -34,31 +34,25 @@ export default (): ReactElement => {
   const [currentGauge, setCurrentGauge] = useState<number>(0);
   const [energyGauge, setEnergyGauge] = useState<number>(0);
 
-  const [voltage, setVoltage] = useState<any>([{
-    id: "volts",
-    color: "hsl(214, 70%, 50%)",
-    data: createHours().map((time: string) => {
-      return {
-        x: time,
-        y: 0
-      }
-    })
-  }]);
-  const [current, setCurrent] = useState<any>([]);
-  const [power, setPower] = useState<any>([]);
-  const [energy, setEnergy] = useState<any>([]);
+  const [batteryData, setBatteryData] = useState<any>([]);
+  // const [voltage, setVoltage] = useState<any>([{
+  //   id: "volts",
+  //   color: "hsl(214, 70%, 50%)",
+  //   data: createHours().map((time: string) => {
+  //     return {
+  //       x: time,
+  //       y: 0
+  //     }
+  //   })
+  // }]);
+  // const [current, setCurrent] = useState<any>([]);
+  // const [power, setPower] = useState<any>([]);
+  // const [energy, setEnergy] = useState<any>([]);
 
   const [logs, setLogs] = useState<any>([]);
   const [activeTab, setActiveTab] = useState('1');
 
-
   let dataLogs: any[] = [];
-
-  let voltage_tmp: any[] = [];
-  let current_tmp: any[] = [];
-  let power_tmp: any[] = [];
-  let energy_tmp: any[] = [];
-
   const toggle = (tab: any) => {
     if (activeTab !== tab) setActiveTab(tab);
   }
@@ -72,21 +66,55 @@ export default (): ReactElement => {
         Messages: JSON.stringify(data.sensor)
       });
 
-      const currTime = moment.utc().local().format('HH:mm:ss');
-
       setVoltageGauge(data.sensor.voltage_usage);
       setCurrentGauge(data.sensor.current_usage);
       setEnergyGauge(data.sensor.active_power);
 
-      prepareData(voltage_tmp, currTime, data.sensor.voltage_usage, 'volts', setVoltage);
-      prepareData(current_tmp, currTime, data.sensor.current_usage, 'current', setCurrent);
-      prepareData(power_tmp, currTime, data.sensor.active_power, 'power', setPower);
-      prepareData(energy_tmp, currTime, data.sensor.active_energy, 'energy', setEnergy);
+      const currTime = moment.utc().local().format('HH:mm:ss');
 
-      reduceMessage(24, voltage_tmp, true);
-      reduceMessage(24, current_tmp, true);
-      reduceMessage(24, power_tmp, true);
-      reduceMessage(24, energy_tmp, true);
+      setBatteryData([
+        {
+          id: "volts (V)",
+          color: "hsl(157, 70%, 50%)",
+          data: createHours().map((time: string) => {
+            return {
+              x: time,
+              y: data.sensor.voltage_usage
+            }
+          })
+        },
+        {
+          id: "current (A)",
+          color: "hsl(298, 70%, 50%)",
+          data: createHours().map((time: string) => {
+            return {
+              x: time,
+              y: data.sensor.current_usage
+            }
+          })
+        },
+        {
+          id: "power (W)",
+          color: "hsl(226, 70%, 50%)",
+          data: createHours().map((time: string) => {
+            return {
+              x: time,
+              y: data.sensor.active_power
+            }
+          })
+        }
+      ])
+
+
+      // prepareData(voltage_tmp, currTime, data.sensor.voltage_usage, 'volts', setVoltage);
+      // prepareData(current_tmp, currTime, data.sensor.current_usage, 'current', setCurrent);
+      // prepareData(power_tmp, currTime, data.sensor.active_power, 'power', setPower);
+      // prepareData(energy_tmp, currTime, data.sensor.active_energy, 'energy', setEnergy);
+
+      // reduceMessage(24, voltage_tmp, true);
+      // reduceMessage(24, current_tmp, true);
+      // reduceMessage(24, power_tmp, true);
+      // reduceMessage(24, energy_tmp, true);
 
       reduceMessage(100, dataLogs);
       setLogs([...dataLogs])
@@ -128,7 +156,7 @@ export default (): ReactElement => {
 
                 <Row>
                   <Col style={{ width: '100%', height: 350, marginTop: 10 }} sm="12">
-                    <DailyChart data={voltage} title="Voltage" legend="Volts" colors="category10" />
+                    <DailyChart data={batteryData} title="Voltage" legend="Volts" colors="category10" />
                   </Col>
                 </Row>
 
@@ -136,7 +164,7 @@ export default (): ReactElement => {
                   <Col>
                     <GaugeMeter title="" name="ssss" chartTitle="Voltage (V)"
                       min={0}
-                      max={20}
+                      max={18}
                       data={voltageGauge}
                       plotBands={[{
                         from: 11.1,
@@ -144,7 +172,7 @@ export default (): ReactElement => {
                         color: '#55BF3B' // green
                       }, {
                         from: 14.6,
-                        to: 20,
+                        to: 18,
                         color: '#DDDF0D' // yellow
                       }, {
                         from: 11.0,
@@ -197,7 +225,6 @@ export default (): ReactElement => {
               </Container>
             </Col>
             <Col sm="4">
-
               <ConsoleLogs subscribData={logs} />
             </Col>
           </Row>

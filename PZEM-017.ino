@@ -69,13 +69,13 @@
 // config parameters
 #define device_id "e49n2dix"
 #define ssid "X-WIFI"
-#define password "1234567"
+#define password "123456789"
 #define ServerHost "192.168.137.101"
 #define ServerPort 4000
 #define SocketIoChannel "ESP"
 
 // Line config
-#define LINE_TOKEN "sdfghtrewertyuytrertyuytr4444_test"
+#define LINE_TOKEN "N0efytMxCMsfsfdf34567654345654356765"
 
 float ActiveVoltageInverter = 13.4;
 float InActiveVoltageInverter = 12.15;
@@ -107,8 +107,8 @@ void setup() {
   USE_SERIAL.begin(115200); //For debug on cosole (PC)
   //resetEnergy(pzemSlaveAddr);
   modbus.begin(pzemSlaveAddr, pzemSerial);
-  pinMode(16, OUTPUT);
-  digitalWrite(LEDPIN, LOW);
+  //  pinMode(16, OUTPUT);
+  //  digitalWrite(LEDPIN, LOW);
 
   resetEnergy(pzemSlaveAddr);
 
@@ -127,14 +127,14 @@ void setup() {
 bool inverterStarted  = false;
 void loop() {
   uint8_t result;
-  digitalWrite(LEDPIN, HIGH);
+  //digitalWrite(LEDPIN, HIGH);
 
   //Web server
   server.handleClient();
 
   //Indicates that the master needs to read 8 registers with slave address 0x01 and the start address of the register is 0x0000.
   result = modbus.readInputRegisters(0x0000, 8); //read the 8 registers of the PZEM-017
-  digitalWrite(LEDPIN, LOW);
+  //digitalWrite(LEDPIN, LOW);
 
   oled.setTextXY(2, 1);
   oled.putString("- S1:" + String((digitalRead(SW1) == LOW) ? "ON" : "OFF") + " S2:" + String((digitalRead(SW2) == LOW) ? "ON" : "OFF") + " S3:" + String((digitalRead(SW3) == LOW) ? "ON" : "OFF") + " -");
@@ -176,9 +176,9 @@ void loop() {
 
     String batteryStatusMessage = "\r\n===============\r\n - Battery Status - \r\n";
     batteryStatusMessage += "VOLTAGE: " + String(voltage_usage) + "V\r\n";
-    batteryStatusMessage += "CURRENT_USAGE: " + String(current_usage) + "A\r\n";
-    batteryStatusMessage += "ACTIVE_POWER: " + String(active_power) + "W\r\n";
-    batteryStatusMessage += "ACTIVE_ENERGY: " + String(active_energy) + "WH";
+    batteryStatusMessage += "CURRENT: " + String(current_usage) + "A\r\n";
+    batteryStatusMessage += "POWER: " + String(active_power) + "W\r\n";
+    batteryStatusMessage += "ENERGY: " + String(active_energy) + "WH";
 
     bool activeInverter = (voltage_usage >= ActiveVoltageInverter) ? true : (voltage_usage <= InActiveVoltageInverter) ? false : inverterStarted;
     if (inverterStarted != activeInverter) {
