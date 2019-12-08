@@ -69,13 +69,13 @@
 // config parameters
 #define device_id "e49n2dix"
 #define ssid "X-WIFI"
-#define password "1234567"
-#define ServerHost "192.168.137.13"
+#define password "123456789"
+#define ServerHost "192.168.137.101"
 #define ServerPort 4000
 #define SocketIoChannel "ESP"
 
 // Line config
-#define LINE_TOKEN "N0efytMxCMsZETa4---TEST---dsfsdfsdfdsfdr"
+#define LINE_TOKEN "34567654345676543456"
 
 float ActiveVoltageInverter = 13.4;
 float InActiveVoltageInverter = 12.15;
@@ -91,7 +91,7 @@ extern String Rcontent;
 
 //Indicates that the master needs to read 8 registers with slave address 0x01 and the start address of the register is 0x0000.
 static uint8_t pzemSlaveAddr = 0x01; // PZEM default address
-
+#define LEDPIN 16
 int SW1 = D5;
 int SW2 = D6;
 int SW3 = D7;
@@ -107,6 +107,9 @@ void setup() {
   USE_SERIAL.begin(115200); //For debug on cosole (PC)
   //resetEnergy(pzemSlaveAddr);
   modbus.begin(pzemSlaveAddr, pzemSerial);
+  pinMode(16, OUTPUT);
+  digitalWrite(LEDPIN, LOW);
+
   resetEnergy(pzemSlaveAddr);
 
   setup_Wifi();
@@ -124,12 +127,14 @@ void setup() {
 bool inverterStarted  = false;
 void loop() {
   uint8_t result;
+  digitalWrite(LEDPIN, HIGH);
 
   //Web server
   server.handleClient();
 
   //Indicates that the master needs to read 8 registers with slave address 0x01 and the start address of the register is 0x0000.
   result = modbus.readInputRegisters(0x0000, 8); //read the 8 registers of the PZEM-017
+  digitalWrite(LEDPIN, LOW);
 
   oled.setTextXY(2, 1);
   oled.putString("- S1:" + String((digitalRead(SW1) == LOW) ? "ON" : "OFF") + " S2:" + String((digitalRead(SW2) == LOW) ? "ON" : "OFF") + " S3:" + String((digitalRead(SW3) == LOW) ? "ON" : "OFF") + " -");
@@ -351,7 +356,7 @@ void setup_Wifi() {
   }
 
   USE_SERIAL.println();
-  printMessage(0, 1, "WIFI Connecting", true);
+  printMessage(0, 1, "WIFI Connecting...", true);
   oled.setTextXY(1, 1);
   while (WiFi.status() != WL_CONNECTED)
   {
