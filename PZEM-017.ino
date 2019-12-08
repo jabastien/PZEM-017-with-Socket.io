@@ -69,13 +69,13 @@
 // config parameters
 #define device_id "e49n2dix"
 #define ssid "X-WIFI"
-#define password "123456789"
+#define password "1234567"
 #define ServerHost "192.168.137.101"
 #define ServerPort 4000
 #define SocketIoChannel "ESP"
 
 // Line config
-#define LINE_TOKEN "34567654345676543456"
+#define LINE_TOKEN "sdfghtrewertyuytrertyuytr4444_test"
 
 float ActiveVoltageInverter = 13.4;
 float InActiveVoltageInverter = 12.15;
@@ -245,7 +245,7 @@ void loop() {
     delay(2000);
   }
 
-  if (socket.monitor() && RID == SocketIoChannel) {
+  if (socket.monitor() && RID == SocketIoChannel && Rname.indexOf("SW") != -1) {
     actionRelaySwitch(Rname, Rcontent, "");
   }
 
