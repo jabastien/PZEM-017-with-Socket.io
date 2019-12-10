@@ -30,7 +30,8 @@ const GaugeMeter = (props: GaugeMeterProps): ReactElement => {
                 plotBackgroundColor: null,
                 plotBackgroundImage: null,
                 plotBorderWidth: 0,
-                plotShadow: false
+                plotShadow: false,
+                height: '100%'
             },
             pane: {
                 startAngle: -150,

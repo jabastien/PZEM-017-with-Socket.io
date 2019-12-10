@@ -1,6 +1,9 @@
 import React, { ReactElement, useState, useEffect } from "react";
-import { Container, Row, Col, NavLink, TabContent, TabPane, Nav, NavItem } from "reactstrap";
+import { Container, Row, Col, NavLink, TabContent, TabPane, Nav, NavItem, Button } from "reactstrap";
 import classnames from 'classnames';
+import _ from 'lodash';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faLightbulb, faShower, faWater, faBroadcastTower, faCheckCircle, faSyncAlt } from '@fortawesome/free-solid-svg-icons'
 
 //init module
 import DailyChart from "../charts/DailyChart";
@@ -8,15 +11,7 @@ import ConsoleLogs from '../console/ConsoleLogs'
 import GaugeMeter from '../meters/gaugeMeter';
 import moment from 'moment'
 import { subscribeData, unsubscribe } from '../socketio/client'
-
-
-const createHours = () => {
-  var arr = [], i;
-  for (i = 0; i < 24; i++) {
-    arr.push(i + ":00");
-  }
-  return arr;
-}
+import './monitering.css'
 
 const reduceMessage = (limit: number, logs: any[], reverse = false) => {
   var totalRows = 0;
@@ -28,29 +23,46 @@ const reduceMessage = (limit: number, logs: any[], reverse = false) => {
   });
 }
 
+const reduceData = (limit: number, logs: any[]) => {
+  var totalRows = 0;
+  logs.forEach((a: any, i: number) => {
+    if (totalRows >= limit)
+      logs.shift();
+
+    totalRows++;
+  });
+}
+
 export default (): ReactElement => {
 
   const [voltageGauge, setVoltageGauge] = useState<number>(0);
   const [currentGauge, setCurrentGauge] = useState<number>(0);
   const [energyGauge, setEnergyGauge] = useState<number>(0);
-
-  const [batteryData, setBatteryData] = useState<any>([]);
-  // const [voltage, setVoltage] = useState<any>([{
-  //   id: "volts",
-  //   color: "hsl(214, 70%, 50%)",
-  //   data: createHours().map((time: string) => {
-  //     return {
-  //       x: time,
-  //       y: 0
-  //     }
-  //   })
-  // }]);
-  // const [current, setCurrent] = useState<any>([]);
-  // const [power, setPower] = useState<any>([]);
-  // const [energy, setEnergy] = useState<any>([]);
-
+  const [batteryData, setBatteryData] = useState<any>([
+    {
+      id: "power (W)",
+      color: "hsl(226, 70%, 50%)",
+      data: []
+    },
+    {
+      id: "current (A)",
+      color: "hsl(298, 70%, 50%)",
+      data: []
+    },
+    {
+      id: "volts (V)",
+      color: "hsl(157, 70%, 50%)",
+      data: []
+    }
+  ]);
+  const [deviceData, setDeviceData] = useState<any>([]);
   const [logs, setLogs] = useState<any>([]);
   const [activeTab, setActiveTab] = useState('1');
+  const [inverterSwitch, setInverterSwitch] = useState(false);
+  const [lampSwitch, setLampSwitch] = useState(false);
+  const [waterfallPumpSwitch, setWaterfallPumpSwitch] = useState(false);
+  const [waterSprinkler, setWaterSprinkler] = useState(false);
+  const [percentageCharge , setPercentageCharge] = useState(0);
 
   let dataLogs: any[] = [];
   const toggle = (tab: any) => {
@@ -58,7 +70,6 @@ export default (): ReactElement => {
   }
 
   useEffect(() => {
-
     const cb = (data: any) => {
       dataLogs.unshift({
         LogLevelType: 'info',
@@ -70,70 +81,105 @@ export default (): ReactElement => {
       setCurrentGauge(data.sensor.current_usage);
       setEnergyGauge(data.sensor.active_power);
 
-      const currTime = moment.utc().local().format('HH:mm:ss');
-
-      setBatteryData([
-        {
-          id: "volts (V)",
-          color: "hsl(157, 70%, 50%)",
-          data: createHours().map((time: string) => {
-            return {
-              x: time,
-              y: data.sensor.voltage_usage
-            }
-          })
-        },
-        {
-          id: "current (A)",
-          color: "hsl(298, 70%, 50%)",
-          data: createHours().map((time: string) => {
-            return {
-              x: time,
-              y: data.sensor.current_usage
-            }
-          })
-        },
-        {
-          id: "power (W)",
-          color: "hsl(226, 70%, 50%)",
-          data: createHours().map((time: string) => {
-            return {
-              x: time,
-              y: data.sensor.active_power
-            }
-          })
-        }
-      ])
-
-
-      // prepareData(voltage_tmp, currTime, data.sensor.voltage_usage, 'volts', setVoltage);
-      // prepareData(current_tmp, currTime, data.sensor.current_usage, 'current', setCurrent);
-      // prepareData(power_tmp, currTime, data.sensor.active_power, 'power', setPower);
-      // prepareData(energy_tmp, currTime, data.sensor.active_energy, 'energy', setEnergy);
-
-      // reduceMessage(24, voltage_tmp, true);
-      // reduceMessage(24, current_tmp, true);
-      // reduceMessage(24, power_tmp, true);
-      // reduceMessage(24, energy_tmp, true);
+      setDeviceData({
+        voltage: data.sensor.voltage_usage,
+        current: data.sensor.current_usage,
+        power: data.sensor.active_power,
+        energy: data.sensor.active_energy,
+      })
 
       reduceMessage(100, dataLogs);
       setLogs([...dataLogs])
     }
     subscribeData(cb);
+
+    console.log('batteryData:', batteryData);
     return () => unsubscribe();
 
   }, []);
 
+  const rangePercentage =(input: number, range_min: number, range_max: number, range_2ndMax: number) => {
+    var percentage = ((input - range_min) * 100) / (range_max - range_min);
+    if (percentage > 100) {
+        if (typeof range_2ndMax !== 'undefined'){
+            percentage = ((range_2ndMax - input) * 100) / (range_2ndMax - range_max);
+            if (percentage < 0) {
+                percentage = 0;
+            }
+        } else {
+            percentage = 100;
+        }
 
-  const prepareData = (objectArr: any[], currentTime: any, value: any, name: string, fn: any) => {
-    if (!objectArr.find(data => data.x === currentTime)) {
-      objectArr.push({ x: currentTime, y: value });
-      fn([{
-        id: name,
-        color: "hsl(214, 70%, 50%)",
-        data: objectArr.length > 0 ? objectArr : []
-      }])
+    } else if (percentage < 0){
+        percentage = 0;
     }
+    return percentage;
+}
+
+  const maxArr = 6;
+  const maxBatteryLevel = 13.0;
+  const minBatteryLevel = 10.5;
+  useEffect(() => {
+    const currTime = moment.utc().local().format('Y-M-DTHH:mm ss');
+    console.log(currTime);
+    let chartData = [...batteryData];
+
+    if (deviceData.voltage) {
+      setPercentageCharge(rangePercentage(deviceData.voltage , minBatteryLevel, maxBatteryLevel, 100));
+      reduceData(maxArr, chartData[0].data);
+      chartData[0].data = [...chartData[0].data, {
+        x: currTime,
+        y: deviceData.voltage
+        //y: Math.floor(Math.random() * 90 + 10)
+      }]
+    }
+
+    if (deviceData.current) {
+      reduceData(maxArr, chartData[1].data);
+      chartData[1].data = [...chartData[1].data, {
+        x: currTime,
+        y: deviceData.current,
+        //y: Math.floor(Math.random() * 90 + 10)
+      }]
+    }
+
+    if (deviceData.power) {
+      reduceData(maxArr, chartData[2].data);
+      chartData[2].data = [...chartData[2].data, {
+        x: currTime,
+        y: deviceData.power
+        //y: Math.floor(Math.random() * 90 + 10)
+      }]
+    }
+
+    setBatteryData(chartData);
+  }, [deviceData])
+
+
+  const handleSwitch = (sw: number) => {
+    switch (sw) {
+      case 1: setInverterSwitch(!inverterSwitch); break;
+      case 2: setLampSwitch(!lampSwitch); break;
+      case 3: setWaterfallPumpSwitch(!waterfallPumpSwitch); break;
+      case 4: setWaterSprinkler(!waterSprinkler); break;
+      default: break;
+    }
+  }
+
+  const handleSystemCheck = () => {
+
+  }
+
+  const handleEnergyReset = () => {
+
+  }
+
+  const Blik = (status: boolean) => {
+    return status ? <div className="led-box" style={{ marginRight: "10px" }}>
+      <div className="led-green" style={{ marginLeft: "5px" }}></div>
+    </div> : <div className="led-box" style={{ marginRight: "10px" }}>
+        <div className="led-red" style={{ marginLeft: "5px" }}></div>
+      </div>
   }
 
   return (
@@ -144,25 +190,23 @@ export default (): ReactElement => {
             className={classnames({ active: activeTab === '1' })}
             onClick={() => { toggle('1'); }}
           >
-            Daily
+            IoT - Solar Project
           </NavLink>
         </NavItem>
       </Nav>
       <TabContent activeTab={activeTab}>
         <TabPane tabId="1">
           <Row>
-            <Col sm="8">
+            <Col sm="9">
               <Container>
-
                 <Row>
                   <Col style={{ width: '100%', height: 350, marginTop: 10 }} sm="12">
-                    <DailyChart data={batteryData} title="Voltage" legend="Volts" colors="category10" />
+                    <DailyChart data={batteryData} title="Real time Battery monitoring" legend="Power" colors="category10" />
                   </Col>
                 </Row>
-
                 <Row>
-                  <Col>
-                    <GaugeMeter title="" name="ssss" chartTitle="Voltage (V)"
+                  <Col xs="4" >
+                    <GaugeMeter title="Voltage" name="ssss" chartTitle="Voltage (V)"
                       min={0}
                       max={18}
                       data={voltageGauge}
@@ -181,8 +225,8 @@ export default (): ReactElement => {
                       }]}
                     />
                   </Col>
-                  <Col>
-                    <GaugeMeter title="" name="ssss" chartTitle="Current (A)"
+                  <Col xs="4">
+                    <GaugeMeter title="Current" name="ssss" chartTitle="Current (A)"
                       min={0}
                       max={10}
                       data={currentGauge}
@@ -201,8 +245,8 @@ export default (): ReactElement => {
                       }]}
                     />
                   </Col>
-                  <Col>
-                    <GaugeMeter title="" name="ssss" chartTitle="Watt (W)"
+                  <Col xs="4" >
+                    <GaugeMeter title="Watt" name="" chartTitle="Watt (W)"
                       min={0}
                       max={2000}
                       data={energyGauge}
@@ -224,8 +268,76 @@ export default (): ReactElement => {
                 </Row>
               </Container>
             </Col>
-            <Col sm="4">
-              <ConsoleLogs subscribData={logs} />
+            <Col sm="3">
+              <div>
+                <strong style={{ textAlign: 'center' }}>Relay Switch</strong>
+              </div>
+              <br />
+              <div>
+              {inverterSwitch ? "ON " : "OFF "}  <Button onClick={() => handleSwitch(1)} color="primary" style={{ margin: 5, width: 200, height: 50 }}>Inverter {' '}
+                  <FontAwesomeIcon icon={faBroadcastTower} size="lg" />
+                  {Blik(inverterSwitch)}
+                </Button>
+              </div>
+              <div>
+              {lampSwitch ? "ON " : "OFF "} <Button onClick={() => handleSwitch(2)} color="warning" style={{ margin: 5, width: 200, height: 50 }}>Lamp {' '}
+                  <FontAwesomeIcon icon={faLightbulb} size="lg" />
+                  {Blik(lampSwitch)}
+                </Button>
+              </div>
+              <div>
+              {waterfallPumpSwitch ? "ON " : "OFF "} <Button onClick={() => handleSwitch(3)} color="info" style={{ margin: 5, width: 200, height: 50 }}>Waterfall Pump {' '}
+                  <FontAwesomeIcon icon={faWater} size="lg" />
+                  {Blik(waterfallPumpSwitch)}
+                </Button>
+              </div>
+              <div>
+                    {waterSprinkler ? "ON " : "OFF "}<Button onClick={() => handleSwitch(4)} color="success" style={{ margin: 5, width: 200, height: 50 }}>Water Sprinkler {' '}
+                  <FontAwesomeIcon icon={faShower} size="lg" />
+                  {Blik(waterSprinkler)}
+                </Button>
+              </div>   
+            
+              <br />
+              <div>
+                <strong style={{ textAlign: 'center' }}>State of Charge</strong>
+              </div>
+                <div className="single-chart">
+                  <svg viewBox="0 0 36 36" className="circular-chart green">
+                    <path className="circle-bg"
+                      d="M18 2.0845
+                        a 15.9155 15.9155 0 0 1 0 31.831
+                        a 15.9155 15.9155 0 0 1 0 -31.831"
+                    />
+                    <path className="circle"
+                      stroke-dasharray={percentageCharge.toFixed(2) + ", 100"}
+                      d="M18 2.0845
+                        a 15.9155 15.9155 0 0 1 0 31.831
+                        a 15.9155 15.9155 0 0 1 0 -31.831"
+                    />
+                    <text x="18" y="20.35" className="percentage">{percentageCharge.toFixed(1) + "%"}</text>
+                  </svg>
+                </div>
+
+                <div>
+                  <Button onClick={handleSystemCheck} color="secondary" style={{ margin: 5, width: 200, height: 50 }}>Check {' '}
+                  <FontAwesomeIcon icon={faCheckCircle} size="lg" />
+                </Button>
+              </div>
+              
+                <div>
+                  <Button onClick={handleEnergyReset} color="danger" style={{ margin: 5, width: 200, height: 50 }}>Energy Reset {' '}
+                  <FontAwesomeIcon icon={faSyncAlt} size="lg" />
+                </Button>
+              </div>
+           
+            </Col>
+          </Row>
+          <Row>
+            <Col >
+              <ConsoleLogs 
+              subscribData={logs} 
+              />
             </Col>
           </Row>
         </TabPane>
@@ -233,5 +345,3 @@ export default (): ReactElement => {
     </div>
   );
 };
-
-//export default Monitoring;

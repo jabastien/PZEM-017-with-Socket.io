@@ -52,6 +52,8 @@
 
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
+
+#include <time.h>
 #include <WiFiClientSecureAxTLS.h>
 #include <ESP8266WebServer.h>
 
@@ -69,13 +71,21 @@
 // config parameters
 #define device_id "e49n2dix"
 #define ssid "X-WIFI"
-#define password "123456789"
+#define password "12345678"
 #define ServerHost "192.168.137.101"
 #define ServerPort 4000
 #define SocketIoChannel "ESP"
 
 // Line config
-#define LINE_TOKEN "N0efytMxCMsfsfdf34567654345654356765"
+#define LINE_TOKEN "N0efytMxCMsZETa4__TEST"
+
+// Config time
+int timezone = 7;
+char ntp_server1[20] = "ntp.ku.ac.th";
+char ntp_server2[20] = "fw.eng.ku.ac.th";
+char ntp_server3[20] = "time.uni.net.th";
+
+
 
 float ActiveVoltageInverter = 13.4;
 float InActiveVoltageInverter = 12.15;
@@ -154,7 +164,7 @@ void loop() {
     //    tempdouble |= node.getResponseBuffer(0x0005) << 8;  //highByte
     //    float energy = tempdouble / 1000.0f;
 
-
+    //Real
     float voltage_usage = (float)modbus.getResponseBuffer(0x0000) / 100.0f;
     float current_usage = (float)modbus.getResponseBuffer(0x0001) / 1000.000f;
 
@@ -166,6 +176,15 @@ void loop() {
 
     uint16_t over_power_alarm = modbus.getResponseBuffer(0x0006);
     uint16_t lower_power_alarm = modbus.getResponseBuffer(0x0007);
+
+
+    //    // For test offline mode
+    //    float voltage_usage  = random(2, 5);
+    //    float current_usage = random(2, 5);
+    //    float active_power = random(3, 6);
+    //    float active_energy = random(2, 5);
+    //    uint16_t over_power_alarm = 0;
+    //    uint16_t lower_power_alarm = 1;
 
     //    USE_SERIAL.print("VOLTAGE:           ");   USE_SERIAL.print(voltage_usage);       USE_SERIAL.println(" V");   // V
     //    USE_SERIAL.print("CURRENT_USAGE:     ");   USE_SERIAL.print(current_usage, 3);    USE_SERIAL.println(" A");   // A
@@ -190,7 +209,7 @@ void loop() {
     uint64_t now = millis();
     StaticJsonDocument<1024> doc;
     doc["data"] = "ESP8266";
-    doc["time"] = now;
+    doc["time"] = NowString();
 
     JsonObject object = doc.createNestedObject("sensor");
     object["voltage_usage"] = voltage_usage;
@@ -212,14 +231,6 @@ void loop() {
 
     oled.setTextXY(7, 1);
     oled.putString("Energy  : " + String(dtostrf(active_energy, 7, 3, outstr)) + " Wh");
-
-    // For test offline mode
-    //    object["voltage_usage"] = random(2, 5);
-    //    object["current_usage"] = random(2, 5);
-    //    object["active_power"] = random(3, 6);
-    //    object["active_energy"] = random(2, 5);
-    //    object["over_power_alarm"] = 0;
-    //    object["lower_power_alarm"] = 1;
 
     //JsonArray alarm = object.createNestedArray("alarm");
     //    alarm.add(48.756080);
@@ -519,4 +530,17 @@ void handleNotFound() {
     message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
   }
   server.send(404, "text/plain", message);
+}
+
+String NowString() {
+  time_t now = time(nullptr);
+  struct tm* newtime = localtime(&now);
+
+  String tmpNow = "";
+  tmpNow += String(newtime->tm_hour);
+  tmpNow += ":";
+  tmpNow += String(newtime->tm_min);
+  tmpNow += ":";
+  tmpNow += String(newtime->tm_sec);
+  return tmpNow;
 }

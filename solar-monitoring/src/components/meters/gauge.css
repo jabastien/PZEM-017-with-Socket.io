@@ -35,3 +35,5 @@
 .highcharts-data-table tr:hover {
     background: #f1f7ff;
 }
+
+.highcharts-button, .highcharts-legend, .highcharts-container > svg > text {display: none;}
