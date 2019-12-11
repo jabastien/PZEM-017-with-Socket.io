@@ -87,8 +87,8 @@ char ntp_server3[20] = "time.uni.net.th";
 
 
 
-float ActiveVoltageInverter = 13.4;
-float InActiveVoltageInverter = 12.15;
+float activeVoltageInverter = 13.4;
+float inActiveVoltageInverter = 12.15;
 
 SocketIOClient socket;
 SoftwareSerial pzemSerial(D3, D4); //rx, tx
@@ -193,60 +193,26 @@ void loop() {
     //    USE_SERIAL.print("OVER_POWER_ALARM:  ");   USE_SERIAL.println(over_power_alarm);
     //    USE_SERIAL.println("====================================================");
 
+    //Build Messages For Line Notify
     String batteryStatusMessage = "\r\n===============\r\n - Battery Status - \r\n";
     batteryStatusMessage += "VOLTAGE: " + String(voltage_usage) + "V\r\n";
     batteryStatusMessage += "CURRENT: " + String(current_usage) + "A\r\n";
     batteryStatusMessage += "POWER: " + String(active_power) + "W\r\n";
     batteryStatusMessage += "ENERGY: " + String(active_energy) + "WH";
 
-    bool activeInverter = (voltage_usage >= ActiveVoltageInverter) ? true : (voltage_usage <= InActiveVoltageInverter) ? false : inverterStarted;
+    bool activeInverter = (voltage_usage >= activeVoltageInverter) ? true : (voltage_usage <= inActiveVoltageInverter) ? false : inverterStarted;
     if (inverterStarted != activeInverter) {
       actionRelaySwitch("SW1", activeInverter ? "state:on" : "state:off", batteryStatusMessage);
       inverterStarted = activeInverter;
       USE_SERIAL.println("inverterStarted: " + String(inverterStarted) + " activeInverter:" + String(activeInverter));
     }
 
-    uint64_t now = millis();
-    StaticJsonDocument<1024> doc;
-    doc["data"] = "ESP8266";
-    doc["time"] = NowString();
-
-    JsonObject object = doc.createNestedObject("sensor");
-    object["voltage_usage"] = voltage_usage;
-    object["current_usage"] = current_usage;
-    object["active_power"] = active_power;
-    object["active_energy"] = active_energy;
-    object["over_power_alarm"] = over_power_alarm;
-    object["lower_power_alarm"] = lower_power_alarm;
-
-    static char outstr[15];
-    oled.setTextXY(4, 1);
-    oled.putString("Voltage :" + String(dtostrf(voltage_usage, 7, 2, outstr)) + "  V");
-
-    oled.setTextXY(5, 1);
-    oled.putString("Current : " + String(dtostrf(current_usage, 7, 3, outstr))  + " A");
-
-    oled.setTextXY(6, 1);
-    oled.putString("Power   : " + String(dtostrf(active_power, 7, 3, outstr)) + " W");
-
-    oled.setTextXY(7, 1);
-    oled.putString("Energy  : " + String(dtostrf(active_energy, 7, 3, outstr)) + " Wh");
-
-    //JsonArray alarm = object.createNestedArray("alarm");
-    //    alarm.add(48.756080);
-    //    alarm.add(2.302038);
-
-    String output;
-    serializeJson(doc, output);
-
-    //socket.send(SocketIoChannel, "message", "ddddddddddddd");
-    socket.sendJSON(SocketIoChannel, output);
-
-    USE_SERIAL.print(output);
+    createResponse(voltage_usage, current_usage, active_power, active_energy, over_power_alarm, lower_power_alarm, true);
   } else {
     clearMessage();
     printMessage(4, 1, "ERROR !!", false);
     printMessage(5, 1, "Failed to read modbus", true);
+    createResponse(0, 0, 0, 0, 0, 0, false);
   }
 
   if (!socket.connected()) {
@@ -262,6 +228,49 @@ void loop() {
 
   delay(2000);
 }
+
+String createResponse(float voltage_usage, float current_usage, float active_power, float active_energy, uint16_t over_power_alarm, uint16_t lower_power_alarm, bool isOledPrint) {
+  uint64_t now = millis();
+  StaticJsonDocument<1024> doc;
+  doc["data"] = "ESP8266";
+  doc["time"] = NowString();
+
+  JsonObject object = doc.createNestedObject("sensor");
+  object["voltage_usage"] = voltage_usage;
+  object["current_usage"] = current_usage;
+  object["active_power"] = active_power;
+  object["active_energy"] = active_energy;
+  object["over_power_alarm"] = over_power_alarm;
+  object["lower_power_alarm"] = lower_power_alarm;
+
+  if (isOledPrint) {
+    static char outstr[15];
+    oled.setTextXY(4, 1);
+    oled.putString("Voltage :" + String(dtostrf(voltage_usage, 7, 2, outstr)) + "  V");
+
+    oled.setTextXY(5, 1);
+    oled.putString("Current : " + String(dtostrf(current_usage, 7, 3, outstr))  + " A");
+
+    oled.setTextXY(6, 1);
+    oled.putString("Power   : " + String(dtostrf(active_power, 7, 3, outstr)) + " W");
+
+    oled.setTextXY(7, 1);
+    oled.putString("Energy  : " + String(dtostrf(active_energy, 7, 3, outstr)) + " Wh");
+  }
+
+  //JsonArray alarm = object.createNestedArray("alarm");
+  //    alarm.add(48.756080);
+  //    alarm.add(2.302038);
+
+  String output;
+  serializeJson(doc, output);
+
+  //socket.send(SocketIoChannel, "message", "ddddddddddddd");
+  socket.sendJSON(SocketIoChannel, output);
+
+  USE_SERIAL.print(output);
+}
+
 
 void actionRelaySwitch(String switchName, String payload, String messageInfo) {
   Serial.println("State => " + payload);
@@ -288,11 +297,11 @@ void actionRelaySwitch(String switchName, String payload, String messageInfo) {
   msq += "\r\n===============\r\n- Relay Switch Status -\r\n" + switchName + ":" + relayStatus;
   Line_Notify(msq);
 
-  Line_Notify(relaySwitchStatus());
+  Line_Notify(deviceInfo());
   Serial.println("[" + switchName + "]: " + relayStatus);
 }
 
-String relaySwitchStatus() {
+String deviceInfo() {
   String status = "\r\nRelay Switch Status";
   status += "\r\nSW1:" + String((digitalRead(SW1) == LOW) ? "ON" : "OFF");
   status += "\r\nSW2:" + String((digitalRead(SW2) == LOW) ? "ON" : "OFF");
