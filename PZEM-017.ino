@@ -202,7 +202,7 @@ void loop() {
 
     bool activeInverter = (voltage_usage >= activeVoltageInverter) ? true : (voltage_usage <= inActiveVoltageInverter) ? false : inverterStarted;
     if (inverterStarted != activeInverter) {
-      actionRelaySwitch("SW1", activeInverter ? "state:on" : "state:off", batteryStatusMessage);
+      actionCommand("SW1", activeInverter ? "state:on" : "state:off", batteryStatusMessage);
       inverterStarted = activeInverter;
       USE_SERIAL.println("inverterStarted: " + String(inverterStarted) + " activeInverter:" + String(activeInverter));
     }
@@ -223,7 +223,7 @@ void loop() {
   }
 
   if (socket.monitor() && RID == SocketIoChannel && Rname.indexOf("SW") != -1) {
-    actionRelaySwitch(Rname, Rcontent, "");
+    actionCommand(Rname, Rcontent, "");
   }
 
   delay(2000);
@@ -272,7 +272,7 @@ String createResponse(float voltage_usage, float current_usage, float active_pow
 }
 
 
-void actionRelaySwitch(String switchName, String payload, String messageInfo) {
+void actionCommand(String switchName, String payload, String messageInfo) {
   Serial.println("State => " + payload);
   if (switchName == "") return;
 
@@ -292,12 +292,14 @@ void actionRelaySwitch(String switchName, String payload, String messageInfo) {
   if (switchName == "SW5")
     digitalWrite(SW5, (payload == "state:on") ? LOW : HIGH);
 
+  if (switchName == "checking")
+    Line_Notify(deviceInfo());
+
   String relayStatus = (payload == "state:on") ? "ON" : "OFF";
   String msq = (messageInfo != "") ? messageInfo : "";
   msq += "\r\n===============\r\n- Relay Switch Status -\r\n" + switchName + ":" + relayStatus;
   Line_Notify(msq);
 
-  Line_Notify(deviceInfo());
   Serial.println("[" + switchName + "]: " + relayStatus);
 }
 
