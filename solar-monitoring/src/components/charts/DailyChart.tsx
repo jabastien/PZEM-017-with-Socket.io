@@ -106,7 +106,7 @@ const DailyChart = (props: DailyChartProps): ReactElement => {
         }}
         colors={{ scheme: props.colors }}
         //colors={['#808080', 'red', '#91BC81']}
-        pointSize={10}
+        pointSize={8}
         pointColor={{ theme: 'background' }}
         pointBorderWidth={2}
         pointBorderColor={{ from: 'serieColor' }}

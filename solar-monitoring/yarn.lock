@@ -1479,6 +1479,11 @@
   dependencies:
     "@babel/types" "^7.3.0"
 
+"@types/canvas-gauges@^2.1.1":
+  version "2.1.1"
+  resolved "https://registry.yarnpkg.com/@types/canvas-gauges/-/canvas-gauges-2.1.1.tgz#e3a0c2eca56778e38791a4c3b7403ec4a20726c4"
+  integrity sha512-5UCsn5DSqRW9HzwUoZkkeE5Fw4GA35Z5Wu/h33CLp5+8qcTyhzslbP6VtlVwNq05LrfPjcMYuHbZhk6zTJdAsw==
+
 "@types/classnames@^2.2.9":
   version "2.2.9"
   resolved "https://registry.yarnpkg.com/@types/classnames/-/classnames-2.2.9.tgz#d868b6febb02666330410fe7f58f3c4b8258be7b"
@@ -3101,6 +3106,11 @@ caniuse-lite@^1.0.0, caniuse-lite@^1.0.30000980, caniuse-lite@^1.0.30000981, can
   version "1.0.30000998"
   resolved "https://registry.yarnpkg.com/caniuse-lite/-/caniuse-lite-1.0.30000998.tgz#7227a8046841e7d01e156ae7227a504d065f6744"
   integrity sha512-8Tj5sPZR9kMHeDD9SZXIVr5m9ofufLLCG2Y4QwQrH18GIwG+kCc+zYdlR036ZRkuKjVVetyxeAgGA1xF7XdmzQ==
+
+canvas-gauges@^2.1.5:
+  version "2.1.5"
+  resolved "https://registry.yarnpkg.com/canvas-gauges/-/canvas-gauges-2.1.5.tgz#62e461280ccf7eaa254486291130289a790a7d3f"
+  integrity sha512-7GUd1uukePQPQPIoM8Sh4UrG8om+2RG+D8WN5BCkIp9wAfByzPuZZinsUkfFCyRrEOZ/rhuwBfFnb1ld8IfNrw==
 
 capture-exit@^2.0.0:
   version "2.0.0"
