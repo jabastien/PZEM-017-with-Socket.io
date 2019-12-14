@@ -120,34 +120,37 @@ export default (): ReactElement => {
   const maxBatteryLevel = 13.0;
   const minBatteryLevel = 10.5;
   useEffect(() => {
-    const currTime = moment.utc().local().format('Y-M-DTHH:mm ss');
+    const currTime = moment.utc().format('Y-M-D HH:mm ss');
     console.log(currTime);
     let chartData = [...batteryData];
 
-    if (deviceData.voltage) {
-      setPercentageCharge(rangePercentage(deviceData.voltage , minBatteryLevel, maxBatteryLevel, 100));
-      reduceData(maxArr, chartData[0].data);
-      chartData[0].data = [...chartData[0].data, {
+    if (deviceData.power) {
+      const powerIndex = 0;
+      reduceData(maxArr, chartData[powerIndex].data);
+      chartData[powerIndex].data = [...chartData[powerIndex].data, {
         x: currTime,
-        y: deviceData.voltage
+        y: deviceData.power
         //y: Math.floor(Math.random() * 90 + 10)
       }]
     }
 
     if (deviceData.current) {
-      reduceData(maxArr, chartData[1].data);
-      chartData[1].data = [...chartData[1].data, {
+      const currentIndex = 1;
+      reduceData(maxArr, chartData[currentIndex].data);
+      chartData[currentIndex].data = [...chartData[currentIndex].data, {
         x: currTime,
         y: deviceData.current,
         //y: Math.floor(Math.random() * 90 + 10)
       }]
     }
 
-    if (deviceData.power) {
-      reduceData(maxArr, chartData[2].data);
-      chartData[2].data = [...chartData[2].data, {
+    if (deviceData.voltage) {
+      const voltageIndex = 2;
+      setPercentageCharge(rangePercentage(deviceData.voltage , minBatteryLevel, maxBatteryLevel, 100));
+      reduceData(maxArr, chartData[voltageIndex].data);
+      chartData[voltageIndex].data = [...chartData[voltageIndex].data, {
         x: currTime,
-        y: deviceData.power
+        y: deviceData.voltage
         //y: Math.floor(Math.random() * 90 + 10)
       }]
     }
@@ -201,7 +204,7 @@ export default (): ReactElement => {
               <Container>
                 <Row>
                   <Col style={{ width: '100%', height: 350, marginTop: 10 }} sm="12">
-                    <DailyChart data={batteryData} title="Real time Battery monitoring" legend="Power" colors="category10" />
+                    <DailyChart data={batteryData} title="Real time Battery monitoring" legend="Solar Power" colors="category10" />
                   </Col>
                 </Row>
                 <Row>

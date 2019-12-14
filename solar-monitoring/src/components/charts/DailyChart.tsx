@@ -63,10 +63,10 @@ const DailyChart = (props: DailyChartProps): ReactElement => {
           bottom: 70,
           left: 60
         }}
-        xFormat='time:%Y-%m-%dT%H:%M %S'
+        xFormat='time:%Y-%m-%d %H:%M %S'
         xScale={{
           type: 'time',
-          format: "%Y-%m-%dT%H:%M %S",
+          format: "%Y-%m-%d %H:%M %S",
           precision: 'second' //second, minute, day
           //minute
           //day
