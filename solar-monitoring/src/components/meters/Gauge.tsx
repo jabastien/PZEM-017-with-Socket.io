@@ -29,7 +29,7 @@ class ReactRadialGauge extends React.Component<IGauge> {
       minValue: this.props.min,
       maxValue: this.props.max,
       majorTicks: this.props.majorTicks || [],
-      minorTicks: 5,
+      minorTicks: 6,
       strokeTicks: true,
       highlights: this.props.plotBands,
       colorPlate: "#fff",

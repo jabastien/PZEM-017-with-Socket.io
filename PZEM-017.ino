@@ -1,4 +1,10 @@
 /*
+
+  # Author : Watchara Pongsri
+  # [github/X-c0d3] https://github.com/X-c0d3/
+  # Web Site: https://wwww.rockdevper.com
+
+
   FOR Sensor PZEM-017
   D3 : RX
   D4 : TX
@@ -66,18 +72,19 @@
 #include <string.h>
 #include <ModbusMaster.h>
 #include <SoftwareSerial.h>
+#include <cstdlib>
 #define USE_SERIAL Serial
 
 // config parameters
 #define device_id "e49n2dix"
-#define ssid "X-WIFI"
-#define password "12345678"
-#define ServerHost "192.168.137.101"
+#define ssid "MY-WIFI"
+#define password "1234567890"
+#define ServerHost "192.168.1.100"
 #define ServerPort 4000
 #define SocketIoChannel "ESP"
 
 // Line config
-#define LINE_TOKEN "N0efytMxCMsZETa4__TEST"
+#define LINE_TOKEN "__YOUR_LINE_TOKEN___"
 
 // Config time
 int timezone = 7;
@@ -85,10 +92,8 @@ char ntp_server1[20] = "ntp.ku.ac.th";
 char ntp_server2[20] = "fw.eng.ku.ac.th";
 char ntp_server3[20] = "time.uni.net.th";
 
-
-
-float activeVoltageInverter = 13.4;
-float inActiveVoltageInverter = 12.15;
+float inverterVoltageStart = 13.15;
+float inverterVoltageShutdown = 12.15;
 
 SocketIOClient socket;
 SoftwareSerial pzemSerial(D3, D4); //rx, tx
@@ -200,7 +205,7 @@ void loop() {
     batteryStatusMessage += "POWER: " + String(active_power) + "W\r\n";
     batteryStatusMessage += "ENERGY: " + String(active_energy) + "WH";
 
-    bool activeInverter = (voltage_usage >= activeVoltageInverter) ? true : (voltage_usage <= inActiveVoltageInverter) ? false : inverterStarted;
+    bool activeInverter = (voltage_usage >= inverterVoltageStart) ? true : (voltage_usage <= inverterVoltageShutdown) ? false : inverterStarted;
     if (inverterStarted != activeInverter) {
       actionCommand("SW1", activeInverter ? "state:on" : "state:off", batteryStatusMessage);
       inverterStarted = activeInverter;
@@ -222,7 +227,7 @@ void loop() {
     delay(2000);
   }
 
-  if (socket.monitor() && RID == SocketIoChannel && Rname.indexOf("SW") != -1) {
+  if (socket.monitor() && RID == SocketIoChannel && socket.connected()) {
     actionCommand(Rname, Rcontent, "");
   }
 
@@ -230,7 +235,6 @@ void loop() {
 }
 
 String createResponse(float voltage_usage, float current_usage, float active_power, float active_energy, uint16_t over_power_alarm, uint16_t lower_power_alarm, bool isOledPrint) {
-  uint64_t now = millis();
   StaticJsonDocument<1024> doc;
   doc["data"] = "ESP8266";
   doc["time"] = NowString();
@@ -272,45 +276,85 @@ String createResponse(float voltage_usage, float current_usage, float active_pow
 }
 
 
-void actionCommand(String switchName, String payload, String messageInfo) {
+void actionCommand(String action, String payload, String messageInfo) {
   Serial.println("State => " + payload);
-  if (switchName == "") return;
+  if (action == "") return;
 
-  if (switchName == "SW1") //Inverter
+  String actionName = "";
+  if (action == "SW1") {
+    actionName = "TBE Inverter 4000w";
     digitalWrite(SW1, (payload == "state:on") ? LOW : HIGH);
+  }
 
-  if (switchName == "SW2") {
+  if (action == "SW2") {
+    actionName = "Lamp";
     digitalWrite(SW2, (payload == "state:on") ? LOW : HIGH);
   }
 
-  if (switchName == "SW3")
+  if (action == "SW3") {
+    actionName = "Waterfall Pump";
     digitalWrite(SW3, (payload == "state:on") ? LOW : HIGH);
+  }
 
-  if (switchName == "SW4")
+  if (action == "SW4") {
+    actionName = "Water Sprinkler";
     digitalWrite(SW4, (payload == "state:on") ? LOW : HIGH);
+  }
 
-  if (switchName == "SW5")
-    digitalWrite(SW5, (payload == "state:on") ? LOW : HIGH);
+  if (action == "checking") {
+    checkCurrentStatus(false);
+  }
 
-  if (switchName == "checking")
-    Line_Notify(deviceInfo());
+  if (action == "setInverterVoltageStart" && payload != "") {
+    inverterVoltageStart = payload.toFloat();
+  }
 
-  String relayStatus = (payload == "state:on") ? "ON" : "OFF";
-  String msq = (messageInfo != "") ? messageInfo : "";
-  msq += "\r\n===============\r\n- Relay Switch Status -\r\n" + switchName + ":" + relayStatus;
-  Line_Notify(msq);
+  if (action == "setInverterVoltageShutdown" && payload != "") {
+    inverterVoltageShutdown = payload.toFloat();
+  }
 
-  Serial.println("[" + switchName + "]: " + relayStatus);
+  if (action == "resetEnergy") {
+    resetEnergy(pzemSlaveAddr);
+  }
+
+  if (actionName != "") {
+    String relayStatus = (payload == "state:on") ? "ON" : "OFF";
+    String msq = (messageInfo != "") ? messageInfo : "";
+    msq += "\r\n===============\r\n- Relay Switch Status -\r\n" + actionName + ": " + relayStatus;
+    Line_Notify(msq);
+    Serial.println("[" + actionName + "]: " + relayStatus);
+    checkCurrentStatus(true);
+  }
 }
 
-String deviceInfo() {
-  String status = "\r\nRelay Switch Status";
-  status += "\r\nSW1:" + String((digitalRead(SW1) == LOW) ? "ON" : "OFF");
-  status += "\r\nSW2:" + String((digitalRead(SW2) == LOW) ? "ON" : "OFF");
-  status += "\r\nSW3:" + String((digitalRead(SW3) == LOW) ? "ON" : "OFF");
-  status += "\r\nSW4:" + String((digitalRead(SW4) == LOW) ? "ON" : "OFF");
-  status += "\r\nSW5:" + String((digitalRead(SW5) == LOW) ? "ON" : "OFF");
-  return status;
+void checkCurrentStatus(bool sendLineNotify) {
+  StaticJsonDocument<1024> doc;
+  doc["data"] = "ESP8266";
+  doc["time"] = NowString();
+
+  //For Display on UI with socket.io
+  JsonObject object = doc.createNestedObject("deviceState");
+  object["SW1"] = String((digitalRead(SW1) == LOW) ? "ON" : "OFF");
+  object["SW2"] = String((digitalRead(SW2) == LOW) ? "ON" : "OFF");
+  object["SW3"] = String((digitalRead(SW3) == LOW) ? "ON" : "OFF");
+  object["SW4"] = String((digitalRead(SW4) == LOW) ? "ON" : "OFF");
+  object["inverterVoltageStart"] = inverterVoltageStart;
+  object["inverterVoltageShutdown"] = inverterVoltageShutdown;
+  object["IpAddress"] = WiFi.localIP().toString();
+
+  String output;
+  serializeJson(doc, output);
+  socket.sendJSON(SocketIoChannel, output);
+
+  if (sendLineNotify) {
+    //Send to Line Notify
+    String status = "\r\nRelay Switch Status";
+    status += "\r\nTBE Inverter 4000w: " + String((digitalRead(SW1) == LOW) ? "ON" : "OFF");
+    status += "\r\nLamp: " + String((digitalRead(SW2) == LOW) ? "ON" : "OFF");
+    status += "\r\nWaterfall Pump: " + String((digitalRead(SW3) == LOW) ? "ON" : "OFF");
+    status += "\r\nWater Sprinkler: " + String((digitalRead(SW4) == LOW) ? "ON" : "OFF");
+    Line_Notify(status);
+  }
 }
 
 void printMessage(int X, int Y, String message, bool isPrintLn) {
@@ -464,11 +508,10 @@ void handleRoot() {
   cmd += "<meta http-equiv='refresh' content='5'/>";
   cmd += "</head>";
 
-  cmd += (digitalRead(SW1) == LOW) ? "<br/>SW1  : ON" : "<br/>SW1  : OFF";
-  cmd += (digitalRead(SW2) == LOW) ? "<br/>SW2  : ON" : "<br/>SW2  : OFF";
-  cmd += (digitalRead(SW3) == LOW) ? "<br/>SW3  : ON" : "<br/>SW3  : OFF";
-  cmd += (digitalRead(SW4) == LOW) ? "<br/>SW4  : ON" : "<br/>SW4  : OFF";
-  cmd += (digitalRead(SW5) == LOW) ? "<br/>SW5  : ON" : "<br/>SW5  : OFF";
+  cmd += "<br/>TBE Inverter 4000w : " + (digitalRead(SW1) == LOW) ? "ON" : "OFF";
+  cmd += "<br/>Lamp  : " + (digitalRead(SW2) == LOW) ? "ON" : "OFF";
+  cmd += "<br/>Waterfall Pump  : " + (digitalRead(SW3) == LOW) ? "ON" : "OFF";
+  cmd += "<br/>Water Sprinkler  : " + (digitalRead(SW4) == LOW) ? "ON" : "OFF";
 
   cmd += "<html>\r\n";
   server.send(200, "text/html", cmd);

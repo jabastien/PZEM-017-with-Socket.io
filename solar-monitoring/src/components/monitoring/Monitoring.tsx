@@ -25,10 +25,10 @@ import {
 //init module
 import DailyChart from "../charts/DailyChart";
 import ConsoleLogs from "../console/ConsoleLogs";
-import GaugeMeter from "../meters/gaugeMeter";
+//import GaugeMeter from "../meters/gaugeMeter";
 import Gauge from "../meters/Gauge";
 import moment from "moment";
-import { subscribeData, unsubscribe } from "../socketio/client";
+import { subscribeData, unsubscribe, broadcastData } from "../socketio/client";
 import "./monitering.css";
 
 const reduceMessage = (limit: number, logs: any[], reverse = false) => {
@@ -74,10 +74,25 @@ export default (): ReactElement => {
   const [deviceData, setDeviceData] = useState<any>([]);
   const [logs, setLogs] = useState<any>([]);
   const [activeTab, setActiveTab] = useState("1");
+  const [deviceIpAddress, setDeviceIpAddress] = useState("");
+
   const [inverterSwitch, setInverterSwitch] = useState(false);
   const [lampSwitch, setLampSwitch] = useState(false);
   const [waterfallPumpSwitch, setWaterfallPumpSwitch] = useState(false);
   const [waterSprinkler, setWaterSprinkler] = useState(false);
+
+  const [disableBtnInverterSw, setDisableBtnInverterSw] = useState(false);
+  const [disableBtnLampSw, setDisableBtnLampSw] = useState(false);
+  const [disableBtnWaterfallPumpSw, setDisableBtnWaterfallPumpSw] = useState(
+    false
+  );
+  const [disableBtnWaterSprinklerSw, setDisableBtnWaterSprinklerSw] = useState(
+    false
+  );
+
+  const [inverterVoltageStart, setInverterVoltageStart] = useState(13.15);
+  const [inverterVoltageShutdown, setInverterVoltageShutdown] = useState(12.15);
+
   const [percentageCharge, setPercentageCharge] = useState(0);
 
   let dataLogs: any[] = [];
@@ -87,32 +102,61 @@ export default (): ReactElement => {
 
   useEffect(() => {
     const cb = (data: any) => {
-      dataLogs.unshift({
-        LogLevelType: "info",
-        Timestamp: moment.utc().local(),
-        Messages: JSON.stringify(data.sensor)
-      });
+      if (data.sensor) {
+        dataLogs.unshift({
+          LogLevelType: "info",
+          Timestamp: moment.utc().local(),
+          Messages: JSON.stringify(data.sensor)
+        });
 
-      setVoltageGauge(data.sensor.voltage_usage);
-      setCurrentGauge(data.sensor.current_usage);
-      setPowerGauge(data.sensor.active_power);
-      setEnergyGauge(data.sensor.active_energy);
-      
+        setVoltageGauge(data.sensor.voltage_usage);
+        setCurrentGauge(data.sensor.current_usage);
+        setPowerGauge(data.sensor.active_power);
+        setEnergyGauge(data.sensor.active_energy);
 
-      setDeviceData({
-        voltage: data.sensor.voltage_usage,
-        current: data.sensor.current_usage,
-        power: data.sensor.active_power,
-        energy: data.sensor.active_energy
-      });
+        setDeviceData({
+          voltage: data.sensor.voltage_usage,
+          current: data.sensor.current_usage,
+          power: data.sensor.active_power,
+          energy: data.sensor.active_energy
+        });
 
-      reduceMessage(100, dataLogs);
-      setLogs([...dataLogs]);
+        reduceMessage(100, dataLogs);
+        setLogs([...dataLogs]);
+      } else if (data.deviceState) {
+        const {
+          IpAddress,
+          SW1,
+          SW2,
+          SW3,
+          SW4,
+          inverterVoltageShutdown,
+          inverterVoltageStart
+        } = data.deviceState;
+        setDeviceIpAddress(IpAddress);
+        setInverterSwitch(SW1 === "ON");
+        setLampSwitch(SW2 === "ON");
+        setWaterfallPumpSwitch(SW3 === "ON");
+        setWaterSprinkler(SW4 === "ON");
+        setInverterVoltageStart(inverterVoltageStart);
+        setInverterVoltageShutdown(inverterVoltageShutdown);
+
+        setDisableBtnInverterSw(false);
+        setDisableBtnLampSw(false);
+        setDisableBtnWaterfallPumpSw(false);
+        setDisableBtnWaterSprinklerSw(false);
+
+        console.log(data.deviceState);
+      } else console.log("socket.io response:", data);
     };
     subscribeData(cb);
 
     console.log("batteryData:", batteryData);
     return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    broadcastData("checking", "");
   }, []);
 
   const rangePercentage = (
@@ -154,7 +198,6 @@ export default (): ReactElement => {
         {
           x: currTime,
           y: deviceData.power
-          //y: Math.floor(Math.random() * 90 + 10)
         }
       ];
     }
@@ -167,7 +210,6 @@ export default (): ReactElement => {
         {
           x: currTime,
           y: deviceData.current
-          //y: Math.floor(Math.random() * 90 + 10)
         }
       ];
     }
@@ -188,7 +230,6 @@ export default (): ReactElement => {
         {
           x: currTime,
           y: deviceData.voltage
-          //y: Math.floor(Math.random() * 90 + 10)
         }
       ];
     }
@@ -199,25 +240,33 @@ export default (): ReactElement => {
   const handleSwitch = (sw: number) => {
     switch (sw) {
       case 1:
-        setInverterSwitch(!inverterSwitch);
+        broadcastData("SW1", !inverterSwitch ? "state:on" : "state:off");
+        setDisableBtnInverterSw(true);
         break;
       case 2:
-        setLampSwitch(!lampSwitch);
+        broadcastData("SW2", !lampSwitch ? "state:on" : "state:off");
+        setDisableBtnLampSw(true);
         break;
       case 3:
-        setWaterfallPumpSwitch(!waterfallPumpSwitch);
+        broadcastData("SW3", !waterfallPumpSwitch ? "state:on" : "state:off");
+        setDisableBtnWaterfallPumpSw(true);
         break;
       case 4:
-        setWaterSprinkler(!waterSprinkler);
+        broadcastData("SW4", !waterSprinkler ? "state:on" : "state:off");
+        setDisableBtnWaterSprinklerSw(true);
         break;
       default:
         break;
     }
   };
 
-  const handleSystemCheck = () => {};
+  const handleSystemCheck = () => {
+    broadcastData("checking", "");
+  };
 
-  const handleEnergyReset = () => {};
+  const handleEnergyReset = () => {
+    broadcastData("resetEnergy", "");
+  };
 
   const Blik = (status: boolean) => {
     return status ? (
@@ -271,8 +320,8 @@ export default (): ReactElement => {
                     />
                   </Col>
                 </Row>
-                <Row style={{paddingTop: 20}} >
-                  <Col      sm="4">
+                <Row style={{ paddingTop: 20 }}>
+                  <Col sm="4">
                     <Gauge
                       min={0}
                       max={18}
@@ -457,9 +506,11 @@ export default (): ReactElement => {
                 <strong style={{ textAlign: "center" }}>Relay Switch</strong>
               </div>
               <br />
+
               <div>
                 {inverterSwitch ? "ON " : "OFF "}{" "}
                 <Button
+                  disabled={disableBtnInverterSw}
                   onClick={() => handleSwitch(1)}
                   color="primary"
                   style={{ margin: 5, width: 200, height: 50 }}
@@ -471,6 +522,7 @@ export default (): ReactElement => {
               <div>
                 {lampSwitch ? "ON " : "OFF "}{" "}
                 <Button
+                  disabled={disableBtnLampSw}
                   onClick={() => handleSwitch(2)}
                   color="warning"
                   style={{ margin: 5, width: 200, height: 50 }}
@@ -482,6 +534,7 @@ export default (): ReactElement => {
               <div>
                 {waterfallPumpSwitch ? "ON " : "OFF "}{" "}
                 <Button
+                  disabled={disableBtnWaterfallPumpSw}
                   onClick={() => handleSwitch(3)}
                   color="info"
                   style={{ margin: 5, width: 200, height: 50 }}
@@ -493,6 +546,7 @@ export default (): ReactElement => {
               <div>
                 {waterSprinkler ? "ON " : "OFF "}
                 <Button
+                  disabled={disableBtnWaterSprinklerSw}
                   onClick={() => handleSwitch(4)}
                   color="success"
                   style={{ margin: 5, width: 200, height: 50 }}
@@ -525,6 +579,15 @@ export default (): ReactElement => {
                     {percentageCharge.toFixed(1) + "%"}
                   </text>
                 </svg>
+
+                <div style={{ textAlign: "center", fontSize: "x-small" }}>
+                  <strong>Device IP: {deviceIpAddress}</strong>
+                  <br />
+                  <strong>
+                    Inverter Start : {inverterVoltageStart}V, Shutdown :{" "}
+                    {inverterVoltageShutdown}V
+                  </strong>
+                </div>
               </div>
 
               <div>

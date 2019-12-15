@@ -25,9 +25,12 @@ const subscribeData = (cbSubscribe: any) => {
     })
 }
 //Send data to socket.io server
-const broadcastData = (cmd: any) => {
-    //console.log(['broadcastToClient', cmd]);
-    socket.emit('command', cmd);
+const broadcastData = (action: string, payload: any) => {
+    console.log(['broadcastToClient', action, payload]);
+    socket.emit('command', {
+        action: action,
+        payload: payload
+    });
 }
 
 const unsubscribe = () => {
