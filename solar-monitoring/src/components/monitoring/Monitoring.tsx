@@ -102,11 +102,12 @@ export default (): ReactElement => {
 
   useEffect(() => {
     const cb = (data: any) => {
+      console.log("[data]:", data);
       if (data.sensor) {
         dataLogs.unshift({
           LogLevelType: "info",
           Timestamp: moment.utc().local(),
-          Messages: JSON.stringify(data.sensor)
+          Messages: JSON.stringify(data)
         });
 
         setVoltageGauge(data.sensor.voltage_usage);
@@ -187,7 +188,7 @@ export default (): ReactElement => {
   const minBatteryLevel = 10.5;
   useEffect(() => {
     const currTime = moment.utc().format("Y-M-D HH:mm ss");
-    console.log(currTime);
+    //console.log(currTime);
     let chartData = [...batteryData];
 
     if (deviceData.power) {
@@ -235,6 +236,7 @@ export default (): ReactElement => {
     }
 
     setBatteryData(chartData);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deviceData]);
 
   const handleSwitch = (sw: number) => {
@@ -433,42 +435,42 @@ export default (): ReactElement => {
                     <Gauge
                       chartTitle="Watt"
                       min={0}
-                      max={2000}
+                      max={1000}
                       units="W"
                       plotBands={[
                         {
                           from: 0,
-                          to: 600,
+                          to: 200,
                           color: "rgba(0, 255, 10, .50)"
                         },
                         {
-                          from: 600,
-                          to: 1000,
+                          from: 200,
+                          to: 400,
                           color: "rgba(10, 10, 10, .25)"
                         },
                         {
-                          from: 1000,
-                          to: 1600,
+                          from: 400,
+                          to: 700,
                           color: "rgba(255, 255, 10, .50)"
                         },
                         {
-                          from: 1600,
-                          to: 2000,
+                          from: 700,
+                          to: 1000,
                           color: "rgba(255, 50, 50, .50)"
                         }
                       ]}
                       majorTicks={[
                         0,
+                        100,
                         200,
+                        300,
                         400,
+                        500,
                         600,
+                        700,
                         800,
-                        1000,
-                        1200,
-                        1400,
-                        1600,
-                        1800,
-                        20000
+                        900,
+                        1000
                       ]}
                       value={powerGauge}
                     />

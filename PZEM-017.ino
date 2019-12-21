@@ -43,12 +43,14 @@
                                                                         0x0001：50A
                                                                         0x0002: 200A
                                                                         0x0003：300A
-
+                                                                        
+  Ref: http://myosuploads3.banggood.com/products/20190723/20190723213410PZEM-003017UserManual.pdf
   Ref: http://solar4living.com/pzem-arduino-modbus.htm
   Ref: https://github.com/armtronix/Wifi-Single-Dimmer-Board/blob/ba577f0539a1fc73145e24bb50342eb1dca86594/Wifi-Single-Dimmer-Board/Arduino_Code/Wifi_single_dimmer_tasmota/sonoff_betaV0.3/xnrg_06_pzem_dc.ino
   Ref: https://github.com/EvertDekker/Pzem016Test/blob/e95c1e6bb2d384a93910be2c8b867e40669a24b4/Pzem016Test.ino
   Ref: https://github.com/Links2004/arduinoWebSockets/blob/master/examples/esp8266/WebSocketClientSocketIO/WebSocketClientSocketIO.ino
   Ref: https://github.com/washo4evr/Socket.io-v1.x-Library/blob/master/SocketIOClient.h
+  Ref: https://github.com/lorenz4672/PZEM017/blob/master/src/main.cpp
 
   Fix complile issue
   https://github.com/esp8266/Arduino/commit/b71872ccca14c410a19371ed6a4838dbaa67e62b
@@ -58,7 +60,6 @@
 
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
-
 #include <time.h>
 #include <WiFiClientSecureAxTLS.h>
 #include <ESP8266WebServer.h>
@@ -91,9 +92,10 @@ int timezone = 7;
 char ntp_server1[20] = "ntp.ku.ac.th";
 char ntp_server2[20] = "fw.eng.ku.ac.th";
 char ntp_server3[20] = "time.uni.net.th";
+int dst = 0;
 
-float inverterVoltageStart = 13.15;
-float inverterVoltageShutdown = 12.15;
+float inverterVoltageStart = 13.10;
+float inverterVoltageShutdown = 12.00;
 
 SocketIOClient socket;
 SoftwareSerial pzemSerial(D3, D4); //rx, tx
@@ -120,10 +122,9 @@ void setup() {
 
   pzemSerial.begin(9600);
   USE_SERIAL.begin(115200); //For debug on cosole (PC)
-  //resetEnergy(pzemSlaveAddr);
   modbus.begin(pzemSlaveAddr, pzemSerial);
-  //  pinMode(16, OUTPUT);
-  //  digitalWrite(LEDPIN, LOW);
+  pinMode(LEDPIN, OUTPUT);
+  digitalWrite(LEDPIN, LOW);
 
   resetEnergy(pzemSlaveAddr);
 
@@ -136,20 +137,22 @@ void setup() {
     socket.send("connection", "message", "Connected !!!!");
   }
 
+  setupTimeZone();
+
   handleRelaySwitch();
 }
 
 bool inverterStarted  = false;
 void loop() {
   uint8_t result;
-  //digitalWrite(LEDPIN, HIGH);
+  digitalWrite(LEDPIN, HIGH);
 
   //Web server
   server.handleClient();
 
   //Indicates that the master needs to read 8 registers with slave address 0x01 and the start address of the register is 0x0000.
   result = modbus.readInputRegisters(0x0000, 8); //read the 8 registers of the PZEM-017
-  //digitalWrite(LEDPIN, LOW);
+  digitalWrite(LEDPIN, LOW);
 
   oled.setTextXY(2, 1);
   oled.putString("- S1:" + String((digitalRead(SW1) == LOW) ? "ON" : "OFF") + " S2:" + String((digitalRead(SW2) == LOW) ? "ON" : "OFF") + " S3:" + String((digitalRead(SW3) == LOW) ? "ON" : "OFF") + " -");
@@ -198,16 +201,18 @@ void loop() {
     //    USE_SERIAL.print("OVER_POWER_ALARM:  ");   USE_SERIAL.println(over_power_alarm);
     //    USE_SERIAL.println("====================================================");
 
-    //Build Messages For Line Notify
-    String batteryStatusMessage = "\r\n===============\r\n - Battery Status - \r\n";
-    batteryStatusMessage += "VOLTAGE: " + String(voltage_usage) + "V\r\n";
-    batteryStatusMessage += "CURRENT: " + String(current_usage) + "A\r\n";
-    batteryStatusMessage += "POWER: " + String(active_power) + "W\r\n";
-    batteryStatusMessage += "ENERGY: " + String(active_energy) + "WH";
+
 
     bool activeInverter = (voltage_usage >= inverterVoltageStart) ? true : (voltage_usage <= inverterVoltageShutdown) ? false : inverterStarted;
     if (inverterStarted != activeInverter) {
-      actionCommand("SW1", activeInverter ? "state:on" : "state:off", batteryStatusMessage);
+      //Build Messages For Line Notify
+      String batteryStatusMessage = "\r\n===============\r\n - Battery Status - \r\n";
+      batteryStatusMessage += "VOLTAGE: " + String(voltage_usage) + "V\r\n";
+      batteryStatusMessage += "CURRENT: " + String(current_usage) + "A\r\n";
+      batteryStatusMessage += "POWER: " + String(active_power) + "W\r\n";
+      batteryStatusMessage += "ENERGY: " + String(active_energy) + "WH";
+
+      actionCommand("SW1", activeInverter ? "state:on" : "state:off", batteryStatusMessage, true);
       inverterStarted = activeInverter;
       USE_SERIAL.println("inverterStarted: " + String(inverterStarted) + " activeInverter:" + String(activeInverter));
     }
@@ -228,7 +233,14 @@ void loop() {
   }
 
   if (socket.monitor() && RID == SocketIoChannel && socket.connected()) {
-    actionCommand(Rname, Rcontent, "");
+    actionCommand(Rname, Rcontent, "", false);
+  }
+
+  //Shutdown Inverter on 15:00
+  time_t now = time(nullptr);
+  struct tm* p_tm = localtime(&now);
+  if (p_tm->tm_hour == 15 && p_tm->tm_min == 0 && p_tm->tm_sec == 0) {
+    actionCommand("SW1", "state:off", "Invert หยุดทำงาน ที่เวลา 15:00", true);
   }
 
   delay(2000);
@@ -276,7 +288,7 @@ String createResponse(float voltage_usage, float current_usage, float active_pow
 }
 
 
-void actionCommand(String action, String payload, String messageInfo) {
+void actionCommand(String action, String payload, String messageInfo, bool isAuto) {
   Serial.println("State => " + payload);
   if (action == "") return;
 
@@ -318,9 +330,10 @@ void actionCommand(String action, String payload, String messageInfo) {
   }
 
   if (actionName != "") {
-    String relayStatus = (payload == "state:on") ? "ON" : "OFF";
+    String relayStatus = (payload == "state:on") ? "เปิด" : "ปิด";
     String msq = (messageInfo != "") ? messageInfo : "";
     msq += "\r\n===============\r\n- Relay Switch Status -\r\n" + actionName + ": " + relayStatus;
+    msq += (isAuto) ? " (Auto)" : " (Manual)";
     Line_Notify(msq);
     Serial.println("[" + actionName + "]: " + relayStatus);
     checkCurrentStatus(true);
@@ -349,10 +362,10 @@ void checkCurrentStatus(bool sendLineNotify) {
   if (sendLineNotify) {
     //Send to Line Notify
     String status = "\r\nRelay Switch Status";
-    status += "\r\nTBE Inverter 4000w: " + String((digitalRead(SW1) == LOW) ? "ON" : "OFF");
-    status += "\r\nLamp: " + String((digitalRead(SW2) == LOW) ? "ON" : "OFF");
-    status += "\r\nWaterfall Pump: " + String((digitalRead(SW3) == LOW) ? "ON" : "OFF");
-    status += "\r\nWater Sprinkler: " + String((digitalRead(SW4) == LOW) ? "ON" : "OFF");
+    status += "\r\nTBE Inverter 4000w: " + String((digitalRead(SW1) == LOW) ? "เปิด" : "ปิด");
+    status += "\r\nLamp: " + String((digitalRead(SW2) == LOW) ? "เปิด" : "ปิด");
+    status += "\r\nWaterfall Pump: " + String((digitalRead(SW3) == LOW) ? "เปิด" : "ปิด");
+    status += "\r\nWater Sprinkler: " + String((digitalRead(SW4) == LOW) ? "เปิด" : "ปิด");
     Line_Notify(status);
   }
 }
@@ -597,4 +610,17 @@ String NowString() {
   tmpNow += ":";
   tmpNow += String(newtime->tm_sec);
   return tmpNow;
+}
+
+void setupTimeZone() {
+
+  configTime(timezone * 3600, dst, ntp_server1, ntp_server2, ntp_server3);
+
+  USE_SERIAL.println("Waiting for time");
+  while (!time(nullptr)) {
+    USE_SERIAL.print(".");
+    delay(500);
+  }
+  USE_SERIAL.println();
+  USE_SERIAL.println("Now: " + NowString());
 }
