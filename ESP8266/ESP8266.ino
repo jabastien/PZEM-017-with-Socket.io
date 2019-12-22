@@ -43,7 +43,7 @@
                                                                         0x0001：50A
                                                                         0x0002: 200A
                                                                         0x0003：300A
-                                                                        
+
   Ref: http://myosuploads3.banggood.com/products/20190723/20190723213410PZEM-003017UserManual.pdf
   Ref: http://solar4living.com/pzem-arduino-modbus.htm
   Ref: https://github.com/armtronix/Wifi-Single-Dimmer-Board/blob/ba577f0539a1fc73145e24bb50342eb1dca86594/Wifi-Single-Dimmer-Board/Arduino_Code/Wifi_single_dimmer_tasmota/sonoff_betaV0.3/xnrg_06_pzem_dc.ino
@@ -63,11 +63,13 @@
 #include <time.h>
 #include <WiFiClientSecureAxTLS.h>
 #include <ESP8266WebServer.h>
+#include <FirebaseArduino.h>
 
 #include <Wire.h>
 #include <ACROBOTIC_SSD1306.h>
 
 #include <SocketIOClient.h>
+//Required 5.13.x becuase compatible with FirebaseArduino
 #include <ArduinoJson.h>
 #include <Hash.h>
 #include <string.h>
@@ -87,6 +89,10 @@
 // Line config
 #define LINE_TOKEN "__YOUR_LINE_TOKEN___"
 
+// Firebase config
+#define FIREBASE_HOST "xxxxxxxxxxxxx.firebaseio.com"
+#define FIREBASE_KEY "____FIREBASE_KEY____"
+
 // Config time
 int timezone = 7;
 char ntp_server1[20] = "ntp.ku.ac.th";
@@ -96,6 +102,8 @@ int dst = 0;
 
 float inverterVoltageStart = 13.10;
 float inverterVoltageShutdown = 12.00;
+float hightVoltage = 13.20;
+float lowVoltage = 10.50;
 
 SocketIOClient socket;
 SoftwareSerial pzemSerial(D3, D4); //rx, tx
@@ -140,9 +148,12 @@ void setup() {
   setupTimeZone();
 
   handleRelaySwitch();
+
+  Firebase.begin(FIREBASE_HOST, FIREBASE_KEY);
 }
 
 bool inverterStarted  = false;
+String batteryStatusMessage;
 void loop() {
   uint8_t result;
   digitalWrite(LEDPIN, HIGH);
@@ -202,19 +213,22 @@ void loop() {
     //    USE_SERIAL.println("====================================================");
 
 
+    //Build Messages For Line Notify
+    batteryStatusMessage = "\r\n===============\r\n - Battery Status - \r\n";
+    batteryStatusMessage += "VOLTAGE: " + String(voltage_usage) + "V\r\n";
+    batteryStatusMessage += "CURRENT: " + String(current_usage) + "A\r\n";
+    batteryStatusMessage += "POWER: " + String(active_power) + "W\r\n";
+    batteryStatusMessage += "ENERGY: " + String(active_energy) + "WH";
 
     bool activeInverter = (voltage_usage >= inverterVoltageStart) ? true : (voltage_usage <= inverterVoltageShutdown) ? false : inverterStarted;
     if (inverterStarted != activeInverter) {
-      //Build Messages For Line Notify
-      String batteryStatusMessage = "\r\n===============\r\n - Battery Status - \r\n";
-      batteryStatusMessage += "VOLTAGE: " + String(voltage_usage) + "V\r\n";
-      batteryStatusMessage += "CURRENT: " + String(current_usage) + "A\r\n";
-      batteryStatusMessage += "POWER: " + String(active_power) + "W\r\n";
-      batteryStatusMessage += "ENERGY: " + String(active_energy) + "WH";
-
       actionCommand("SW1", activeInverter ? "state:on" : "state:off", batteryStatusMessage, true);
       inverterStarted = activeInverter;
       USE_SERIAL.println("inverterStarted: " + String(inverterStarted) + " activeInverter:" + String(activeInverter));
+    }
+
+    if (voltage_usage <= lowVoltage || voltage_usage >= hightVoltage) {
+      actionCommand("SW1", "state:off", batteryStatusMessage, true);
     }
 
     createResponse(voltage_usage, current_usage, active_power, active_energy, over_power_alarm, lower_power_alarm, true);
@@ -247,17 +261,43 @@ void loop() {
 }
 
 String createResponse(float voltage_usage, float current_usage, float active_power, float active_energy, uint16_t over_power_alarm, uint16_t lower_power_alarm, bool isOledPrint) {
-  StaticJsonDocument<1024> doc;
-  doc["data"] = "ESP8266";
-  doc["time"] = NowString();
+  //For ArduinoJson 6.X
+  //  StaticJsonDocument<1024> doc;
+  //  doc["data"] = "ESP8266";
+  //  doc["time"] = NowString();
+  //  JsonObject object = doc.createNestedObject("sensor");
 
-  JsonObject object = doc.createNestedObject("sensor");
-  object["voltage_usage"] = voltage_usage;
-  object["current_usage"] = current_usage;
-  object["active_power"] = active_power;
-  object["active_energy"] = active_energy;
-  object["over_power_alarm"] = over_power_alarm;
-  object["lower_power_alarm"] = lower_power_alarm;
+  //  object["voltage_usage"] = voltage_usage;
+  //  object["current_usage"] = current_usage;
+  //  object["active_power"] = active_power;
+  //  object["active_energy"] = active_energy;
+  //  object["over_power_alarm"] = over_power_alarm;
+  //  object["lower_power_alarm"] = lower_power_alarm;
+
+  //For ArduinoJson 6.X
+  //serializeJson(doc, output);
+
+  StaticJsonBuffer<512> jsonBuffer;
+  JsonObject& root = jsonBuffer.createObject();
+  root["deviceName"] = "ESP8266";
+  root["deviceId"] = device_id;
+  root["time"] = NowString();
+
+  JsonObject& data = root.createNestedObject("sensor");
+  data["voltage_usage"] = voltage_usage;
+  data["current_usage"] = current_usage;
+  data["active_power"] = active_power;
+  data["active_energy"] = active_energy;
+  data["over_power_alarm"] = over_power_alarm;
+  data["lower_power_alarm"] = lower_power_alarm;
+
+  Firebase.push("data", root);
+  if (Firebase.failed()) {
+    Serial.print("pushing /data failed:");
+    Serial.println(Firebase.error());
+  }
+  String output;
+  root.prettyPrintTo(output);
 
   if (isOledPrint) {
     static char outstr[15];
@@ -278,15 +318,11 @@ String createResponse(float voltage_usage, float current_usage, float active_pow
   //    alarm.add(48.756080);
   //    alarm.add(2.302038);
 
-  String output;
-  serializeJson(doc, output);
-
   //socket.send(SocketIoChannel, "message", "ddddddddddddd");
   socket.sendJSON(SocketIoChannel, output);
 
   USE_SERIAL.print(output);
 }
-
 
 void actionCommand(String action, String payload, String messageInfo, bool isAuto) {
   Serial.println("State => " + payload);
@@ -330,33 +366,54 @@ void actionCommand(String action, String payload, String messageInfo, bool isAut
   }
 
   if (actionName != "") {
+    checkCurrentStatus(true);
+
     String relayStatus = (payload == "state:on") ? "เปิด" : "ปิด";
     String msq = (messageInfo != "") ? messageInfo : "";
     msq += "\r\n===============\r\n- Relay Switch Status -\r\n" + actionName + ": " + relayStatus;
     msq += (isAuto) ? " (Auto)" : " (Manual)";
     Line_Notify(msq);
     Serial.println("[" + actionName + "]: " + relayStatus);
-    checkCurrentStatus(true);
   }
 }
 
 void checkCurrentStatus(bool sendLineNotify) {
-  StaticJsonDocument<1024> doc;
-  doc["data"] = "ESP8266";
-  doc["time"] = NowString();
 
-  //For Display on UI with socket.io
-  JsonObject object = doc.createNestedObject("deviceState");
-  object["SW1"] = String((digitalRead(SW1) == LOW) ? "ON" : "OFF");
-  object["SW2"] = String((digitalRead(SW2) == LOW) ? "ON" : "OFF");
-  object["SW3"] = String((digitalRead(SW3) == LOW) ? "ON" : "OFF");
-  object["SW4"] = String((digitalRead(SW4) == LOW) ? "ON" : "OFF");
-  object["inverterVoltageStart"] = inverterVoltageStart;
-  object["inverterVoltageShutdown"] = inverterVoltageShutdown;
-  object["IpAddress"] = WiFi.localIP().toString();
+  // For ArduinoJson 6.X
+  //  StaticJsonDocument<1024> doc;
+  //  doc["data"] = "ESP8266";
+  //  doc["time"] = NowString();
+  //
+  //  //For Display on UI with socket.io
+  //  JsonObject object = doc.createNestedObject("deviceState");
+  //  object["SW1"] = String((digitalRead(SW1) == LOW) ? "ON" : "OFF");
+  //  object["SW2"] = String((digitalRead(SW2) == LOW) ? "ON" : "OFF");
+  //  object["SW3"] = String((digitalRead(SW3) == LOW) ? "ON" : "OFF");
+  //  object["SW4"] = String((digitalRead(SW4) == LOW) ? "ON" : "OFF");
+  //  object["inverterVoltageStart"] = inverterVoltageStart;
+  //  object["inverterVoltageShutdown"] = inverterVoltageShutdown;
+  //  object["IpAddress"] = WiFi.localIP().toString();
+  //  String output;
+  //  serializeJson(doc, output);
+
+  StaticJsonBuffer<512> jsonBuffer;
+  JsonObject& root = jsonBuffer.createObject();
+  root["deviceName"] = "ESP8266";
+  root["deviceId"] = device_id;
+  root["time"] = NowString();
+
+  JsonObject& data = root.createNestedObject("deviceState");
+  data["SW1"] = String((digitalRead(SW1) == LOW) ? "ON" : "OFF");
+  data["SW2"] = String((digitalRead(SW2) == LOW) ? "ON" : "OFF");
+  data["SW3"] = String((digitalRead(SW3) == LOW) ? "ON" : "OFF");
+  data["SW4"] = String((digitalRead(SW4) == LOW) ? "ON" : "OFF");
+  data["inverterVoltageStart"] = inverterVoltageStart;
+  data["inverterVoltageShutdown"] = inverterVoltageShutdown;
+  data["IpAddress"] = WiFi.localIP().toString();
 
   String output;
-  serializeJson(doc, output);
+  root.prettyPrintTo(output);
+
   socket.sendJSON(SocketIoChannel, output);
 
   if (sendLineNotify) {
