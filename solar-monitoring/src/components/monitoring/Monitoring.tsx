@@ -49,6 +49,8 @@ const reduceData = (limit: number, logs: any[]) => {
   });
 };
 
+const dateFormat = "Y-M-D HH:mm ss";
+
 export default (): ReactElement => {
   const [voltageGauge, setVoltageGauge] = useState<number>(0);
   const [currentGauge, setCurrentGauge] = useState<number>(0);
@@ -187,7 +189,7 @@ export default (): ReactElement => {
   const maxBatteryLevel = 13.0;
   const minBatteryLevel = 10.5;
   useEffect(() => {
-    const currTime = moment.utc().format("Y-M-D HH:mm ss");
+    const currTime = moment.utc().format(dateFormat);
     //console.log(currTime);
     let chartData = [...batteryData];
 
