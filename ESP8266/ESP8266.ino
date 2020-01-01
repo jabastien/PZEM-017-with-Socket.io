@@ -57,7 +57,6 @@
 
 */
 
-
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <time.h>
@@ -94,7 +93,7 @@
 #define FIREBASE_KEY "____FIREBASE_KEY____"
 
 // Config time
-int timezone = 7;
+int timezone = 7 * 3600; //For thailand timezone
 char ntp_server1[20] = "ntp.ku.ac.th";
 char ntp_server2[20] = "fw.eng.ku.ac.th";
 char ntp_server3[20] = "time.uni.net.th";
@@ -102,13 +101,8 @@ int dst = 0;
 
 float inverterVoltageStart = 13.10;
 float inverterVoltageShutdown = 12.00;
-float hightVoltage = 13.20;
+float hightVoltage = 13.80;
 float lowVoltage = 10.50;
-
-SocketIOClient socket;
-SoftwareSerial pzemSerial(D3, D4); //rx, tx
-ModbusMaster modbus;
-ESP8266WebServer server(80);
 
 extern String RID;
 extern String Rname;
@@ -116,12 +110,21 @@ extern String Rcontent;
 
 //Indicates that the master needs to read 8 registers with slave address 0x01 and the start address of the register is 0x0000.
 static uint8_t pzemSlaveAddr = 0x01; // PZEM default address
-#define LEDPIN 16
+
+int RX = D3;
+int TX = D4;
+
 int SW1 = D5;
 int SW2 = D6;
 int SW3 = D7;
 int SW4 = D8;
 int SW5 = D9;
+int LEDPIN = 16;
+
+SocketIOClient socket;
+SoftwareSerial pzemSerial(RX, TX); //rx, tx
+ModbusMaster modbus;
+ESP8266WebServer server(80);
 
 void setup() {
 
@@ -152,7 +155,7 @@ void setup() {
   Firebase.begin(FIREBASE_HOST, FIREBASE_KEY);
 }
 
-bool inverterStarted  = false;
+bool inverterStarted = false;
 String batteryStatusMessage;
 void loop() {
   uint8_t result;
@@ -168,8 +171,7 @@ void loop() {
   oled.setTextXY(2, 1);
   oled.putString("- S1:" + String((digitalRead(SW1) == LOW) ? "ON" : "OFF") + " S2:" + String((digitalRead(SW2) == LOW) ? "ON" : "OFF") + " S3:" + String((digitalRead(SW3) == LOW) ? "ON" : "OFF") + " -");
 
-  if (result == modbus.ku8MBSuccess)
-  {
+  if (result == modbus.ku8MBSuccess) {
     uint32_t tempdouble = 0x00000000;
 
     //    float voltage = (float)node.getResponseBuffer(0x0000) / 100.0;
@@ -187,15 +189,14 @@ void loop() {
     float voltage_usage = (float)modbus.getResponseBuffer(0x0000) / 100.0f;
     float current_usage = (float)modbus.getResponseBuffer(0x0001) / 1000.000f;
 
-    tempdouble =  (modbus.getResponseBuffer(0x0003) << 16) + modbus.getResponseBuffer(0x0002);
+    tempdouble = (modbus.getResponseBuffer(0x0003) << 16) + modbus.getResponseBuffer(0x0002);
     float active_power = tempdouble / 100.0f;
 
-    tempdouble =  (modbus.getResponseBuffer(0x0005) << 16) + modbus.getResponseBuffer(0x0004);
+    tempdouble = (modbus.getResponseBuffer(0x0005) << 16) + modbus.getResponseBuffer(0x0004);
     float active_energy = tempdouble;
 
     uint16_t over_power_alarm = modbus.getResponseBuffer(0x0006);
     uint16_t lower_power_alarm = modbus.getResponseBuffer(0x0007);
-
 
     //    // For test offline mode
     //    float voltage_usage  = random(2, 5);
@@ -212,7 +213,6 @@ void loop() {
     //    USE_SERIAL.print("OVER_POWER_ALARM:  ");   USE_SERIAL.println(over_power_alarm);
     //    USE_SERIAL.println("====================================================");
 
-
     //Build Messages For Line Notify
     batteryStatusMessage = "\r\n===============\r\n - Battery Status - \r\n";
     batteryStatusMessage += "VOLTAGE: " + String(voltage_usage) + "V\r\n";
@@ -227,12 +227,14 @@ void loop() {
       USE_SERIAL.println("inverterStarted: " + String(inverterStarted) + " activeInverter:" + String(activeInverter));
     }
 
-    if (voltage_usage <= lowVoltage || voltage_usage >= hightVoltage) {
+    if (voltage_usage < lowVoltage || voltage_usage > hightVoltage) {
+      inverterStarted = false;
       actionCommand("SW1", "state:off", batteryStatusMessage, true);
     }
 
     createResponse(voltage_usage, current_usage, active_power, active_energy, over_power_alarm, lower_power_alarm, true);
-  } else {
+  }
+  else {
     clearMessage();
     printMessage(4, 1, "ERROR !!", false);
     printMessage(5, 1, "Failed to read modbus", true);
@@ -257,6 +259,14 @@ void loop() {
     actionCommand("SW1", "state:off", "Invert หยุดทำงาน ที่เวลา 15:00", true);
   }
 
+  if (p_tm->tm_hour == 23 && p_tm->tm_min == 59)   {
+    Firebase.remove("data");
+    if (Firebase.failed()) {
+      Serial.print("delete /data failed:");
+      Serial.println(Firebase.error());
+    }
+  }
+
   delay(2000);
 }
 
@@ -264,7 +274,7 @@ String createResponse(float voltage_usage, float current_usage, float active_pow
   //For ArduinoJson 6.X
   //  StaticJsonDocument<1024> doc;
   //  doc["data"] = "ESP8266";
-  //  doc["time"] = NowString();
+  //  doc["last_Update"] = NowString();
   //  JsonObject object = doc.createNestedObject("sensor");
 
   //  object["voltage_usage"] = voltage_usage;
@@ -281,7 +291,7 @@ String createResponse(float voltage_usage, float current_usage, float active_pow
   JsonObject& root = jsonBuffer.createObject();
   root["deviceName"] = "ESP8266";
   root["deviceId"] = device_id;
-  root["time"] = NowString();
+  root["lastUpdated"] = NowString();
 
   JsonObject& data = root.createNestedObject("sensor");
   data["voltage_usage"] = voltage_usage;
@@ -291,11 +301,14 @@ String createResponse(float voltage_usage, float current_usage, float active_pow
   data["over_power_alarm"] = over_power_alarm;
   data["lower_power_alarm"] = lower_power_alarm;
 
-  Firebase.push("data", root);
-  if (Firebase.failed()) {
-    Serial.print("pushing /data failed:");
-    Serial.println(Firebase.error());
+  if (voltage_usage > 0) {
+    Firebase.push("data", root);
+    if (Firebase.failed())     {
+      USE_SERIAL.print("pushing /data failed:");
+      USE_SERIAL.println(Firebase.error());
+    }
   }
+
   String output;
   root.prettyPrintTo(output);
 
@@ -305,7 +318,7 @@ String createResponse(float voltage_usage, float current_usage, float active_pow
     oled.putString("Voltage :" + String(dtostrf(voltage_usage, 7, 2, outstr)) + "  V");
 
     oled.setTextXY(5, 1);
-    oled.putString("Current : " + String(dtostrf(current_usage, 7, 3, outstr))  + " A");
+    oled.putString("Current : " + String(dtostrf(current_usage, 7, 3, outstr)) + " A");
 
     oled.setTextXY(6, 1);
     oled.putString("Power   : " + String(dtostrf(active_power, 7, 3, outstr)) + " W");
@@ -368,7 +381,7 @@ void actionCommand(String action, String payload, String messageInfo, bool isAut
   if (actionName != "") {
     checkCurrentStatus(true);
 
-    String relayStatus = (payload == "state:on") ? "เปิด" : "ปิด";
+    String relayStatus = String((payload == "state:on") ? "เปิด" : "ปิด");
     String msq = (messageInfo != "") ? messageInfo : "";
     msq += "\r\n===============\r\n- Relay Switch Status -\r\n" + actionName + ": " + relayStatus;
     msq += (isAuto) ? " (Auto)" : " (Manual)";
@@ -382,7 +395,7 @@ void checkCurrentStatus(bool sendLineNotify) {
   // For ArduinoJson 6.X
   //  StaticJsonDocument<1024> doc;
   //  doc["data"] = "ESP8266";
-  //  doc["time"] = NowString();
+  //  doc["lastUpdated"] = NowString();
   //
   //  //For Display on UI with socket.io
   //  JsonObject object = doc.createNestedObject("deviceState");
@@ -400,7 +413,7 @@ void checkCurrentStatus(bool sendLineNotify) {
   JsonObject& root = jsonBuffer.createObject();
   root["deviceName"] = "ESP8266";
   root["deviceId"] = device_id;
-  root["time"] = NowString();
+  root["lastUpdated"] = NowString();
 
   JsonObject& data = root.createNestedObject("deviceState");
   data["SW1"] = String((digitalRead(SW1) == LOW) ? "ON" : "OFF");
@@ -458,8 +471,7 @@ void resetEnergy(uint8_t slaveAddr) {
   delay(1000);
 }
 
-void changeAddress(uint8_t OldslaveAddr, uint8_t NewslaveAddr)
-{
+void changeAddress(uint8_t OldslaveAddr, uint8_t NewslaveAddr) {
   static uint8_t SlaveParameter = 0x06;
   static uint16_t registerAddress = 0x0003; // Register address to be changed
   uint16_t u16CRC = 0xFFFF;
@@ -494,8 +506,7 @@ void setup_Wifi() {
   USE_SERIAL.println();
   printMessage(0, 1, "WIFI Connecting...", true);
   oled.setTextXY(1, 1);
-  while (WiFi.status() != WL_CONNECTED)
-  {
+  while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
     oled.putString(".");
@@ -507,7 +518,7 @@ void setup_Wifi() {
 
   USE_SERIAL.println();
   USE_SERIAL.print("WIFI Connected ");
-  String ip = WiFi.localIP().toString();    USE_SERIAL.println(ip.c_str());
+  String ip = WiFi.localIP().toString(); USE_SERIAL.println(ip.c_str());
   USE_SERIAL.println("Socket.io Server: "); USE_SERIAL.print(ServerHost);
   USE_SERIAL.println();
 
@@ -524,10 +535,10 @@ void setup_IpAddress() {
 
 void InitialOLED() {
   Wire.begin();
-  oled.init();                      // Initialze SSD1306 OLED display
+  oled.init(); // Initialze SSD1306 OLED display
   //oled.setInverseDisplay();
   oled.deactivateScroll();
-  oled.clearDisplay();              // Clear screen
+  oled.clearDisplay(); // Clear screen
   oled.setFont(font5x7);
   //oled.setFont(font8x8);
 
@@ -536,7 +547,6 @@ void InitialOLED() {
     oled.putString("                              ");
   }
 }
-
 
 void Line_Notify(String message) {
   axTLS::WiFiClientSecure client;
@@ -578,10 +588,10 @@ void handleRoot() {
   cmd += "<meta http-equiv='refresh' content='5'/>";
   cmd += "</head>";
 
-  cmd += "<br/>TBE Inverter 4000w : " + (digitalRead(SW1) == LOW) ? "ON" : "OFF";
-  cmd += "<br/>Lamp  : " + (digitalRead(SW2) == LOW) ? "ON" : "OFF";
-  cmd += "<br/>Waterfall Pump  : " + (digitalRead(SW3) == LOW) ? "ON" : "OFF";
-  cmd += "<br/>Water Sprinkler  : " + (digitalRead(SW4) == LOW) ? "ON" : "OFF";
+  cmd += "<br/>TBE Inverter 4000w : " + String((digitalRead(SW1) == LOW) ? "ON" : "OFF");
+  cmd += "<br/>Lamp  : " + String((digitalRead(SW2) == LOW) ? "ON" : "OFF");
+  cmd += "<br/>Waterfall Pump  : " + String((digitalRead(SW3) == LOW) ? "ON" : "OFF");
+  cmd += "<br/>Water Sprinkler  : " + String((digitalRead(SW4) == LOW) ? "ON" : "OFF");
 
   cmd += "<html>\r\n";
   server.send(200, "text/html", cmd);
@@ -601,7 +611,7 @@ void handleRelaySwitch() {
   });
 
   server.on("/sw1=0", []() {
-    server.send(200, "text/plain", "SW1 = OFF");  digitalWrite(SW1, HIGH);
+    server.send(200, "text/plain", "SW1 = OFF"); digitalWrite(SW1, HIGH);
   });
 
   server.on("/sw2=1", []() {
@@ -609,7 +619,7 @@ void handleRelaySwitch() {
   });
 
   server.on("/sw2=0", []() {
-    server.send(200, "text/plain", "SW2 = OFF");  digitalWrite(SW2, HIGH);
+    server.send(200, "text/plain", "SW2 = OFF"); digitalWrite(SW2, HIGH);
   });
 
   server.on("/sw3=1", []() {
@@ -617,7 +627,7 @@ void handleRelaySwitch() {
   });
 
   server.on("/sw3=0", []() {
-    server.send(200, "text/plain", "SW3 = OFF");  digitalWrite(SW3, HIGH);
+    server.send(200, "text/plain", "SW3 = OFF"); digitalWrite(SW3, HIGH);
   });
 
   server.on("/sw4=1", []() {
@@ -625,7 +635,7 @@ void handleRelaySwitch() {
   });
 
   server.on("/sw4=0", []() {
-    server.send(200, "text/plain", "SW4 = OFF");  digitalWrite(SW4, HIGH);
+    server.send(200, "text/plain", "SW4 = OFF"); digitalWrite(SW4, HIGH);
   });
 
   server.on("/sw5=1", []() {
@@ -633,7 +643,7 @@ void handleRelaySwitch() {
   });
 
   server.on("/sw5=0", []() {
-    server.send(200, "text/plain", "SW5 = OFF");  digitalWrite(SW5, HIGH);
+    server.send(200, "text/plain", "SW5 = OFF"); digitalWrite(SW5, HIGH);
   });
 
   server.onNotFound(handleNotFound);
@@ -659,8 +669,14 @@ void handleNotFound() {
 String NowString() {
   time_t now = time(nullptr);
   struct tm* newtime = localtime(&now);
-
+  //Serial.println(ctime(&now));
   String tmpNow = "";
+  tmpNow += String(newtime->tm_mday);
+  tmpNow += "/";
+  tmpNow += String(newtime->tm_mon + 1);
+  tmpNow += "/";
+  tmpNow += String(newtime->tm_year + 1900);
+  tmpNow += " ";
   tmpNow += String(newtime->tm_hour);
   tmpNow += ":";
   tmpNow += String(newtime->tm_min);
@@ -670,9 +686,7 @@ String NowString() {
 }
 
 void setupTimeZone() {
-
-  configTime(timezone * 3600, dst, ntp_server1, ntp_server2, ntp_server3);
-
+  configTime(timezone, dst, ntp_server1, ntp_server2, ntp_server3);
   USE_SERIAL.println("Waiting for time");
   while (!time(nullptr)) {
     USE_SERIAL.print(".");
